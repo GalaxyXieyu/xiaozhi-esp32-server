@@ -51,6 +51,9 @@
                 <el-button class="reset-btn" @click="resetConfig">{{
                   $t("roleConfig.reset")
                 }}</el-button>
+                <el-button class="openclaw-entry-btn" @click="goToOpenClawManagement">
+                  OpenClaw
+                </el-button>
                 <button class="custom-close-btn" @click="goToHome">×</button>
               </div>
             </div>
@@ -450,6 +453,17 @@ export default {
     goToHome() {
       this.$router.push("/home");
     },
+    goToOpenClawManagement() {
+      const agentId = this.$route.query.agentId;
+      if (!agentId) {
+        this.$message.warning("当前智能体未加载，无法进入 OpenClaw 管理页");
+        return;
+      }
+      this.$router.push({
+        path: "/openclaw-management",
+        query: { agentId },
+      });
+    },
     async saveConfig() {
       try {
         await this.handleSaveAgentTags(this.$route.query.agentId);
@@ -651,6 +665,16 @@ export default {
 
             // 确保意图识别选项的可见性正确
             this.updateIntentOptionsVisibility();
+
+            if (this.$route.query.openFunctions === "1") {
+              this.openFunctionDialog();
+              const nextQuery = { ...this.$route.query };
+              delete nextQuery.openFunctions;
+              this.$router.replace({
+                path: this.$route.path,
+                query: nextQuery,
+              });
+            }
           });
         } else {
           this.$message.error(data.msg || i18n.t("roleConfig.fetchConfigFailed"));
@@ -1677,6 +1701,15 @@ export default {
   background: #e6ebff;
   color: #5778ff;
   border: 1px solid #adbdff;
+  border-radius: 18px;
+  padding: 8px 16px;
+  height: 32px;
+}
+
+.header-actions .openclaw-entry-btn {
+  background: #edf7f3;
+  color: #17805d;
+  border: 1px solid #8fd3bb;
   border-radius: 18px;
   padding: 8px 16px;
   height: 32px;

@@ -122,6 +122,17 @@ const routes = [
     }
   },
   {
+    path: '/openclaw-management',
+    name: 'OpenClawManagement',
+    component: function () {
+      return import('../views/OpenClawManagement.vue')
+    },
+    meta: {
+      requiresAuth: true,
+      title: 'OpenClaw 管理'
+    }
+  },
+  {
     path: '/ota-management',
     name: 'OtaManagement',
     component: function () {
@@ -217,7 +228,7 @@ VueRouter.prototype.push = function push(location) {
 }
 
 // 需要登录才能访问的路由
-const protectedRoutes = ['home', 'RoleConfig', 'DeviceManagement', 'UserManagement', 'ModelConfig', 'KnowledgeBaseManagement', 'KnowledgeFileUpload']
+const protectedRoutes = ['home', 'RoleConfig', 'DeviceManagement', 'UserManagement', 'ModelConfig', 'KnowledgeBaseManagement', 'KnowledgeFileUpload', 'OpenClawManagement']
 
 // 路由守卫
 router.beforeEach((to, from, next) => {

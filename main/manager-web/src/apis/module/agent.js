@@ -58,6 +58,9 @@ export default {
                 RequestService.clearRequestTime();
                 callback(res);
             })
+            .fail((err) => {
+                callback(err);
+            })
             .networkFail((err) => {
                 console.error('获取配置失败:', err);
                 RequestService.reAjaxFun(() => {
@@ -188,11 +191,65 @@ export default {
                 RequestService.clearRequestTime();
                 callback(res);
             })
+            .fail((err) => {
+                callback(err);
+            })
             .networkFail(() => {
                 RequestService.reAjaxFun(() => {
                     this.getAgentMcpToolsList(agentId, callback);
                 });
             }).send();
+    },
+    // 聚合 OpenClaw 控制面所需的核心数据
+    getAgentOpenClawSurface(agentId, callback) {
+        const surface = {
+            agentConfig: null,
+            agentConfigError: '',
+            mcpAccessAddress: '',
+            mcpAddressError: '',
+            mcpTools: [],
+            mcpToolsError: '',
+        };
+        let completed = 0;
+
+        const finish = () => {
+            completed += 1;
+            if (completed === 3) {
+                callback({
+                    data: {
+                        code: 0,
+                        data: surface,
+                    },
+                });
+            }
+        };
+
+        this.getDeviceConfig(agentId, (res) => {
+            if (res && res.data && res.data.code === 0) {
+                surface.agentConfig = res.data.data || null;
+            } else {
+                surface.agentConfigError = (res && res.data && res.data.msg) || '获取智能体配置失败';
+            }
+            finish();
+        });
+
+        this.getAgentMcpAccessAddress(agentId, (res) => {
+            if (res && res.data && res.data.code === 0) {
+                surface.mcpAccessAddress = res.data.data || '';
+            } else {
+                surface.mcpAddressError = (res && res.data && res.data.msg) || '获取 MCP 地址失败';
+            }
+            finish();
+        });
+
+        this.getAgentMcpToolsList(agentId, (res) => {
+            if (res && res.data && res.data.code === 0) {
+                surface.mcpTools = Array.isArray(res.data.data) ? res.data.data : [];
+            } else {
+                surface.mcpToolsError = (res && res.data && res.data.msg) || '获取 MCP 工具列表失败';
+            }
+            finish();
+        });
     },
     // 添加智能体的声纹
     addAgentVoicePrint(voicePrintData, callback) {

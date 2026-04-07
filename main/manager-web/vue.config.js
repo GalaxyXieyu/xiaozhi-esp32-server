@@ -124,7 +124,12 @@ module.exports = defineConfig({
         new InjectManifest({
           swSrc: path.resolve(__dirname, 'src/service-worker.js'),
           swDest: 'service-worker.js',
-          exclude: [/\.map$/, /asset-manifest\.json$/],
+          exclude: [
+            /\.map$/,
+            /asset-manifest\.json$/,
+            /generator\/static\/fonts\/font_noto_qwen_30_4\.bin$/,
+            /generator\/static\/fonts\/noto_qwen\.ttf$/,
+          ],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
           // 自定义Service Worker注入点
           injectionPoint: 'self.__WB_MANIFEST',

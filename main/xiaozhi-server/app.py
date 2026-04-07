@@ -8,6 +8,7 @@ from config.logger import setup_logging
 from core.utils.util import get_local_ip, validate_mcp_endpoint
 from core.http_server import SimpleHttpServer
 from core.websocket_server import WebSocketServer
+from core.openclaw import OpenClawBridgeHub, XiaozhiActiveConnectionRegistry
 from core.utils.util import check_ffmpeg_installed
 from core.utils.gc_manager import get_gc_manager
 
@@ -68,11 +69,28 @@ async def main():
     gc_manager = get_gc_manager(interval_seconds=300)
     await gc_manager.start()
 
+    connection_registry = XiaozhiActiveConnectionRegistry()
+    openclaw_hub = None
+    if (config.get("openclaw_hub", {}) or {}).get("enabled", False):
+        openclaw_hub = OpenClawBridgeHub(
+            config,
+            connection_registry=connection_registry,
+        )
+
     # 启动 WebSocket 服务器
-    ws_server = WebSocketServer(config)
+    ws_server = WebSocketServer(
+        config,
+        openclaw_hub=openclaw_hub,
+        connection_registry=connection_registry,
+    )
     ws_task = asyncio.create_task(ws_server.start())
     # 启动 Simple http 服务器
-    ota_server = SimpleHttpServer(config)
+    ota_server = SimpleHttpServer(
+        config,
+        openclaw_hub=openclaw_hub,
+        connection_registry=connection_registry,
+        websocket_server=ws_server,
+    )
     ota_task = asyncio.create_task(ota_server.start())
 
     read_config_from_api = config.get("read_config_from_api", False)
@@ -129,6 +147,8 @@ async def main():
     finally:
         # 停止全局GC管理器
         await gc_manager.stop()
+        if openclaw_hub:
+            await openclaw_hub.close()
 
         # 取消所有任务（关键修复点）
         stdin_task.cancel()

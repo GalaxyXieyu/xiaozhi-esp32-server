@@ -79,6 +79,9 @@ async def get_config_from_api_async(config):
             "auth_key": config["server"].get("auth_key", ""),
         }
     config_data["server"]["auth"] = {"enabled": auth_enabled}
+    # OpenClaw hub 仍然由 runtime 本地配置驱动，不能被 manager-api 配置流覆盖掉。
+    if config.get("openclaw_hub") is not None:
+        config_data["openclaw_hub"] = config.get("openclaw_hub", {})
     # 如果服务器没有prompt_template，则从本地配置读取
     if not config_data.get("prompt_template"):
         config_data["prompt_template"] = config.get("prompt_template")

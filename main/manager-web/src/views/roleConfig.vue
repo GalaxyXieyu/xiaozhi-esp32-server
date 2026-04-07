@@ -70,7 +70,22 @@
                         maxlength="64"
                       />
                     </el-form-item>
-                    <el-form-item :label="$t('roleConfig.roleTemplate') + '：'">
+                    <el-form-item label="类型：">
+                      <div class="agent-type-panel">
+                        <el-radio-group v-model="agentType" @change="handleAgentTypeChange">
+                          <el-radio-button label="native">原生</el-radio-button>
+                          <el-radio-button label="openclaw">OpenClaw</el-radio-button>
+                        </el-radio-group>
+                        <div class="agent-type-hint">
+                          {{
+                            isOpenClawAgent
+                              ? "当前智能体改为由 OpenClaw inventory 绑定，提示词与函数能力默认由 OpenClaw 侧维护。"
+                              : "当前智能体使用本地原生配置流，可直接编辑提示词、函数和上下文源。"
+                          }}
+                        </div>
+                      </div>
+                    </el-form-item>
+                    <el-form-item v-if="!isOpenClawAgent" :label="$t('roleConfig.roleTemplate') + '：'">
                       <div class="template-container">
                         <div
                           v-for="(template, index) in templates"
@@ -97,7 +112,93 @@
                         </el-button>
                       </div>
                     </el-form-item>
-                    <el-form-item :label="$t('roleConfig.roleIntroduction') + '：'">
+                    <el-form-item v-if="isOpenClawAgent" label="绑定：">
+                      <div class="openclaw-binding-panel">
+                        <div class="openclaw-binding-head">
+                          <div class="openclaw-binding-title">OpenClaw Agent Binding</div>
+                          <el-tag size="mini" :type="openclawStatusTagType">{{ openclawStatusText }}</el-tag>
+                        </div>
+                        <div class="openclaw-binding-grid">
+                          <el-select
+                            v-model="openclawBinding.channelId"
+                            class="form-select"
+                            filterable
+                            clearable
+                            :loading="openclawLoading"
+                            placeholder="选择 Channel"
+                            @change="handleOpenClawChannelChange"
+                          >
+                            <el-option
+                              v-for="item in enabledOpenClawChannels"
+                              :key="item.id"
+                              :label="item.name"
+                              :value="item.id"
+                            />
+                          </el-select>
+                          <el-select
+                            v-model="openclawBinding.runtimeAccount"
+                            class="form-select"
+                            filterable
+                            clearable
+                            :loading="openclawInventoryLoading"
+                            :disabled="!openclawBinding.channelId"
+                            placeholder="选择 runtime/account"
+                            @change="handleRuntimeAccountChange"
+                          >
+                            <el-option
+                              v-for="item in runtimeAccountOptions"
+                              :key="item.value"
+                              :label="item.label"
+                              :value="item.value"
+                            />
+                          </el-select>
+                          <el-select
+                            v-model="openclawBinding.openclawAgentId"
+                            class="form-select"
+                            filterable
+                            clearable
+                            :loading="openclawInventoryLoading"
+                            :disabled="!openclawBinding.channelId"
+                            placeholder="选择 OpenClaw Agent"
+                            @change="handleOpenClawAgentChange"
+                          >
+                            <el-option
+                              v-for="item in openclawAgentOptions"
+                              :key="item.value"
+                              :label="item.label"
+                              :value="item.value"
+                            />
+                          </el-select>
+                        </div>
+                        <div class="openclaw-binding-actions">
+                          <el-button size="small" @click="goToOpenClawManagement">
+                            管理 Channel
+                          </el-button>
+                          <el-button
+                            size="small"
+                            :loading="openclawInventoryLoading"
+                            :disabled="!openclawBinding.channelId"
+                            @click="loadOpenClawInventory(openclawBinding.channelId)"
+                          >
+                            刷新 Inventory
+                          </el-button>
+                        </div>
+                        <div class="openclaw-binding-meta">
+                          <span>Source: {{ openclawInventory.sourceUrl || "未同步 inventory" }}</span>
+                          <span v-if="openclawBinding.runtimeAccountLabel">账号: {{ openclawBinding.runtimeAccountLabel }}</span>
+                          <span v-if="openclawBinding.openclawAgentName">Agent: {{ openclawBinding.openclawAgentName }}</span>
+                        </div>
+                        <el-alert
+                          v-if="openclawInventory.errorMessage || openclawBinding.errorMessage"
+                          class="openclaw-alert"
+                          type="warning"
+                          :closable="false"
+                          show-icon
+                          :title="openclawInventory.errorMessage || openclawBinding.errorMessage"
+                        />
+                      </div>
+                    </el-form-item>
+                    <el-form-item v-if="!isOpenClawAgent" :label="$t('roleConfig.roleIntroduction') + '：'">
                       <el-input
                         type="textarea"
                         rows="8"
@@ -107,6 +208,14 @@
                         maxlength="2000"
                         show-word-limit
                         class="form-textarea"
+                      />
+                    </el-form-item>
+                    <el-form-item v-else label="说明：">
+                      <el-alert
+                        type="info"
+                        :closable="false"
+                        show-icon
+                        title="OpenClaw 类型不在这里编辑提示词，当前页面保留音色、模型和基础资料配置。"
                       />
                     </el-form-item>
 
@@ -376,6 +485,26 @@ import i18n from "@/i18n";
 import featureManager from "@/utils/featureManager"; 
 import VersionFooter from "@/components/VersionFooter.vue";
 
+const createEmptyOpenClawBinding = () => ({
+  agentType: "native",
+  channelId: "",
+  runtimeAccount: "",
+  runtimeAccountLabel: "",
+  openclawAgentId: "",
+  openclawAgentName: "",
+  syncStatus: "native",
+  errorMessage: "",
+});
+
+const createEmptyOpenClawInventory = () => ({
+  channelId: "",
+  sourceUrl: "",
+  healthy: false,
+  errorMessage: "",
+  runtimeAccounts: [],
+  agents: [],
+});
+
 export default {
   name: "RoleConfigPage",
   components: { HeaderBar, FunctionDialog, ContextProviderDialog, TtsAdvancedSettings, VersionFooter },
@@ -446,8 +575,60 @@ export default {
       },
       dynamicTags: [],
       inputVisible: false,
-      inputValue: ''
+      inputValue: '',
+      agentType: "native",
+      openclawChannels: [],
+      openclawBinding: createEmptyOpenClawBinding(),
+      openclawInventory: createEmptyOpenClawInventory(),
+      openclawLoading: false,
+      openclawInventoryLoading: false,
     };
+  },
+  computed: {
+    isOpenClawAgent() {
+      return this.agentType === "openclaw";
+    },
+    enabledOpenClawChannels() {
+      return this.openclawChannels.filter((item) => item && item.enabled !== false);
+    },
+    runtimeAccountOptions() {
+      return this.appendCurrentBindingOption(
+        this.openclawInventory.runtimeAccounts,
+        this.openclawBinding.runtimeAccount,
+        this.openclawBinding.runtimeAccountLabel
+      );
+    },
+    openclawAgentOptions() {
+      return this.appendCurrentBindingOption(
+        this.openclawInventory.agents,
+        this.openclawBinding.openclawAgentId,
+        this.openclawBinding.openclawAgentName
+      );
+    },
+    openclawStatusTagType() {
+      if (this.isOpenClawAgent && this.openclawInventory.healthy) {
+        return "success";
+      }
+      if (this.isOpenClawAgent && (this.openclawBinding.errorMessage || this.openclawInventory.errorMessage)) {
+        return "warning";
+      }
+      return "info";
+    },
+    openclawStatusText() {
+      if (!this.isOpenClawAgent) {
+        return "原生模式";
+      }
+      if (this.openclawInventoryLoading) {
+        return "同步中";
+      }
+      if (this.openclawInventory.healthy) {
+        return "已连接";
+      }
+      if (this.openclawBinding.errorMessage || this.openclawInventory.errorMessage) {
+        return "待检查";
+      }
+      return "待绑定";
+    },
   },
   methods: {
     goToHome() {
@@ -465,10 +646,23 @@ export default {
       });
     },
     async saveConfig() {
+      const agentId = this.$route.query.agentId;
+      if (!agentId) {
+        this.$message.error("当前智能体未加载，无法保存配置");
+        return;
+      }
       try {
-        await this.handleSaveAgentTags(this.$route.query.agentId);
+        await this.handleSaveAgentTags(agentId);
       } catch (error) {
         console.error('保存标签失败:', error);
+        this.$message.error({
+          message: typeof error === "string" ? error : "保存标签失败",
+          showClose: true,
+        });
+        return;
+      }
+
+      if (this.isOpenClawAgent && !this.validateOpenClawBinding()) {
         return;
       }
 
@@ -509,20 +703,20 @@ export default {
       if (this.form.ttsPitch !== null && this.form.ttsPitch !== undefined) {
         configData.ttsPitch = this.form.ttsPitch;
       }
-      Api.agent.updateAgentConfig(this.$route.query.agentId, configData, ({ data }) => {
-        if (data.code === 0) {
-          this.$message.success({
-            message: i18n.t("roleConfig.saveSuccess"),
-            showClose: true,
-          });
-        } else {
-          this.$message.error({
-            message: data.msg || i18n.t("roleConfig.saveFailed"),
-            showClose: true,
-          });
-        }
-      });
-      
+
+      try {
+        await this.updateAgentConfigRequest(agentId, configData);
+        await this.saveOpenClawBindingRequest(agentId);
+        this.$message.success({
+          message: i18n.t("roleConfig.saveSuccess"),
+          showClose: true,
+        });
+      } catch (error) {
+        this.$message.error({
+          message: error.message || i18n.t("roleConfig.saveFailed"),
+          showClose: true,
+        });
+      }
     },
     resetConfig() {
       this.$confirm(i18n.t("roleConfig.confirmReset"), i18n.t("message.info"), {
@@ -553,6 +747,9 @@ export default {
           };
           this.dynamicTags = [];
           this.currentFunctions = [];
+          this.agentType = "native";
+          this.openclawBinding = createEmptyOpenClawBinding();
+          this.openclawInventory = createEmptyOpenClawInventory();
           this.$message.success({
             message: i18n.t("roleConfig.resetSuccess"),
             showClose: true,
@@ -679,6 +876,173 @@ export default {
         } else {
           this.$message.error(data.msg || i18n.t("roleConfig.fetchConfigFailed"));
         }
+      });
+    },
+    loadOpenClawChannels() {
+      this.openclawLoading = true;
+      Api.openclaw.getChannels(({ data }) => {
+        this.openclawLoading = false;
+        if (data.code === 0) {
+          this.openclawChannels = Array.isArray(data.data) ? data.data : [];
+        } else {
+          this.$message.error(data.msg || "获取 OpenClaw channel 列表失败");
+        }
+      });
+    },
+    loadOpenClawBinding(agentId) {
+      Api.openclaw.getAgentBinding(agentId, ({ data }) => {
+        if (data.code !== 0) {
+          this.$message.error(data.msg || "获取 OpenClaw 绑定配置失败");
+          return;
+        }
+        const binding = {
+          ...createEmptyOpenClawBinding(),
+          ...(data.data || {}),
+        };
+        this.agentType = binding.agentType || "native";
+        this.openclawBinding = binding;
+        if (binding.channelId) {
+          this.loadOpenClawInventory(binding.channelId);
+        } else {
+          this.openclawInventory = createEmptyOpenClawInventory();
+        }
+      }, ({ data }) => {
+        this.$message.error((data && data.msg) || "获取 OpenClaw 绑定配置失败");
+      });
+    },
+    loadOpenClawInventory(channelId) {
+      if (!channelId) {
+        this.openclawInventory = createEmptyOpenClawInventory();
+        return;
+      }
+      this.openclawInventoryLoading = true;
+      Api.openclaw.getChannelInventory(channelId, ({ data }) => {
+        this.openclawInventoryLoading = false;
+        if (data.code === 0) {
+          this.openclawInventory = {
+            ...createEmptyOpenClawInventory(),
+            ...(data.data || {}),
+          };
+          return;
+        }
+        this.openclawInventory = {
+          ...createEmptyOpenClawInventory(),
+          channelId,
+          errorMessage: data.msg || "拉取 OpenClaw inventory 失败",
+        };
+      }, ({ data }) => {
+        this.openclawInventoryLoading = false;
+        this.openclawInventory = {
+          ...createEmptyOpenClawInventory(),
+          channelId,
+          errorMessage: (data && data.msg) || "拉取 OpenClaw inventory 失败",
+        };
+      });
+    },
+    handleAgentTypeChange(nextType) {
+      this.agentType = nextType;
+      this.openclawBinding.agentType = nextType;
+      if (nextType === "openclaw" && this.openclawBinding.channelId) {
+        this.loadOpenClawInventory(this.openclawBinding.channelId);
+      }
+    },
+    handleOpenClawChannelChange(channelId) {
+      const hasChanged = channelId !== this.openclawInventory.channelId;
+      this.openclawBinding.channelId = channelId;
+      if (hasChanged) {
+        this.openclawBinding.runtimeAccount = "";
+        this.openclawBinding.runtimeAccountLabel = "";
+        this.openclawBinding.openclawAgentId = "";
+        this.openclawBinding.openclawAgentName = "";
+      }
+      this.loadOpenClawInventory(channelId);
+    },
+    handleRuntimeAccountChange(value) {
+      this.openclawBinding.runtimeAccount = value;
+      this.openclawBinding.runtimeAccountLabel = this.findOptionLabel(
+        this.openclawInventory.runtimeAccounts,
+        value,
+        this.openclawBinding.runtimeAccountLabel || value
+      );
+    },
+    handleOpenClawAgentChange(value) {
+      this.openclawBinding.openclawAgentId = value;
+      this.openclawBinding.openclawAgentName = this.findOptionLabel(
+        this.openclawInventory.agents,
+        value,
+        this.openclawBinding.openclawAgentName || value
+      );
+    },
+    appendCurrentBindingOption(options, currentValue, currentLabel) {
+      const list = Array.isArray(options) ? options.slice() : [];
+      if (!currentValue || list.some((item) => item.value === currentValue)) {
+        return list;
+      }
+      list.unshift({
+        value: currentValue,
+        label: currentLabel ? `${currentLabel}（当前绑定）` : `${currentValue}（当前绑定）`,
+      });
+      return list;
+    },
+    findOptionLabel(options, value, fallback = "") {
+      const matched = (options || []).find((item) => item.value === value);
+      return matched ? matched.label : fallback;
+    },
+    validateOpenClawBinding() {
+      if (!this.openclawBinding.channelId) {
+        this.$message.warning("OpenClaw 类型智能体必须先选择 Channel");
+        return false;
+      }
+      if (!this.openclawBinding.runtimeAccount) {
+        this.$message.warning("OpenClaw 类型智能体必须选择 runtime/account");
+        return false;
+      }
+      if (!this.openclawBinding.openclawAgentId) {
+        this.$message.warning("OpenClaw 类型智能体必须选择 OpenClaw Agent");
+        return false;
+      }
+      return true;
+    },
+    updateAgentConfigRequest(agentId, configData) {
+      return new Promise((resolve, reject) => {
+        Api.agent.updateAgentConfig(agentId, configData, ({ data }) => {
+          if (data.code === 0) {
+            resolve(data.data);
+            return;
+          }
+          reject(new Error(data.msg || i18n.t("roleConfig.saveFailed")));
+        });
+      });
+    },
+    saveOpenClawBindingRequest(agentId) {
+      const payload = this.isOpenClawAgent
+        ? {
+            ...createEmptyOpenClawBinding(),
+            ...this.openclawBinding,
+            agentType: "openclaw",
+            syncStatus: this.openclawInventory.healthy ? "connected" : "configured",
+            errorMessage: this.openclawInventory.errorMessage || "",
+          }
+        : createEmptyOpenClawBinding();
+      payload.agentType = this.isOpenClawAgent ? "openclaw" : "native";
+      if (!this.isOpenClawAgent) {
+        payload.syncStatus = "native";
+      }
+      return new Promise((resolve, reject) => {
+        Api.openclaw.updateAgentBinding(agentId, payload, ({ data }) => {
+          if (data.code === 0) {
+            this.openclawBinding = {
+              ...createEmptyOpenClawBinding(),
+              ...(data.data || payload),
+            };
+            this.agentType = this.openclawBinding.agentType || "native";
+            resolve(this.openclawBinding);
+            return;
+          }
+          reject(new Error(data.msg || "保存 OpenClaw 绑定失败"));
+        }, ({ data }) => {
+          reject(new Error((data && data.msg) || "保存 OpenClaw 绑定失败"));
+        });
       });
     },
     fetchModelOptions() {
@@ -830,7 +1194,7 @@ export default {
       return name.charAt(0);
     },
     showFunctionIcons(type) {
-      return type === "Intent" && this.form.model.intentModelId !== "Intent_nointent";
+      return !this.isOpenClawAgent && type === "Intent" && this.form.model.intentModelId !== "Intent_nointent";
     },
     handleModelChange(type, value) {
       if (type === "Intent" && value !== "Intent_nointent") {
@@ -878,6 +1242,10 @@ export default {
       });
     },
     openFunctionDialog() {
+      if (this.isOpenClawAgent) {
+        this.$message.info("OpenClaw 类型智能体的提示词与函数能力由 OpenClaw 侧管理");
+        return;
+      }
       // 显示编辑对话框时，确保 allFunctions 已经加载
       if (this.allFunctions.length === 0) {
         this.fetchAllFunctions().then(() => (this.showFunctionDialog = true));
@@ -1288,10 +1656,12 @@ export default {
   },
   async mounted() {
     const agentId = this.$route.query.agentId;
+    this.loadOpenClawChannels();
     if (agentId) {
       this.fetchAgentConfig(agentId);
       this.getAgentTags(agentId);
       this.fetchAllFunctions();
+      this.loadOpenClawBinding(agentId);
     }
     this.fetchModelOptions();
     this.fetchTemplates();
@@ -1524,6 +1894,68 @@ export default {
 
 .template-item:hover {
   background-color: #d0d8ff;
+}
+
+.agent-type-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-type-hint {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f8ff;
+  color: #54617f;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.openclaw-binding-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #d8e2ff;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef3ff 100%);
+}
+
+.openclaw-binding-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.openclaw-binding-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #35415f;
+}
+
+.openclaw-binding-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.openclaw-binding-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.openclaw-binding-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #6b7690;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.openclaw-alert {
+  margin-top: 2px;
 }
 
 .model-select-wrapper {

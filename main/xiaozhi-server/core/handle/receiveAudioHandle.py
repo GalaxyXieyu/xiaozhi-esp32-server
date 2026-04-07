@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.connection import ConnectionHandler
 from core.utils.util import audio_to_data
-from core.handle.abortHandle import handleAbortMessage
+from core.handle.abortHandle import handleAbortMessage, is_voice_interrupt_enabled
 from core.handle.intentHandler import handle_user_intent
 from core.utils.output_counter import check_device_output_limit
 from core.handle.sendAudioHandle import send_stt_message, SentenceType
@@ -15,8 +15,6 @@ TAG = __name__
 
 
 async def handleAudioMessage(conn: "ConnectionHandler", audio):
-    if conn.is_exiting:
-        return
     # 当前片段是否有人说话
     have_voice = conn.vad.is_vad(conn, audio)
     # 如果设备刚刚被唤醒，短暂忽略VAD检测
@@ -29,7 +27,15 @@ async def handleAudioMessage(conn: "ConnectionHandler", audio):
     # manual 模式下不打断正在播放的内容
     if have_voice:
         if conn.client_is_speaking and conn.client_listen_mode != "manual":
-            await handleAbortMessage(conn)
+            if is_voice_interrupt_enabled(conn):
+                await handleAbortMessage(conn)
+            else:
+                conn.last_activity_time = time.time() * 1000
+                conn.reset_audio_states()
+                conn.logger.bind(tag=TAG).info(
+                    "检测到语音输入，但当前已关闭语音打断，忽略本次说话"
+                )
+                return
     # 设备长时间空闲检测，用于say goodbye
     await no_voice_close_connect(conn, have_voice)
     # 接收音频
@@ -83,7 +89,13 @@ async def startToChat(conn: "ConnectionHandler", text):
             return
     # manual 模式下不打断正在播放的内容
     if conn.client_is_speaking and conn.client_listen_mode != "manual":
-        await handleAbortMessage(conn)
+        if is_voice_interrupt_enabled(conn):
+            await handleAbortMessage(conn)
+        else:
+            conn.logger.bind(tag=TAG).info(
+                "当前仍在播报，且已关闭语音打断，忽略本次对话启动"
+            )
+            return
 
     # 首先进行意图分析，使用实际文本内容
     intent_handled = await handle_user_intent(conn, actual_text)
@@ -94,6 +106,8 @@ async def startToChat(conn: "ConnectionHandler", text):
 
     # 意图未被处理，继续常规聊天流程，使用实际文本内容
     await send_stt_message(conn, actual_text)
+    if await conn.relay_chat_to_openclaw(actual_text):
+        return
     conn.executor.submit(conn.chat, actual_text)
 
 

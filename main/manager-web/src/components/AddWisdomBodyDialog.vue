@@ -16,6 +16,16 @@
       <div class="input-46" style="margin-top: 12px;">
         <el-input maxLength="64" ref="inputRef" :placeholder="$t('addAgentDialog.placeholder')" v-model="wisdomBodyName" @keyup.enter.native="confirm" />
       </div>
+      <div style="font-weight: 400;text-align: left;color: #3d4566;margin-top: 18px;">
+        <div style="color: red;display: inline-block;">*</div> 智能体类型：
+      </div>
+      <el-radio-group v-model="agentType" style="margin-top: 12px;display:flex;gap:12px;">
+        <el-radio-button label="native">原生</el-radio-button>
+        <el-radio-button label="openclaw">OpenClaw</el-radio-button>
+      </el-radio-group>
+      <div style="margin-top: 10px;font-size: 12px;color: #818cae;text-align: left;">
+        {{ agentType === 'openclaw' ? '创建后将使用 OpenClaw 类型配置流，提示词改为由 OpenClaw 侧管理。' : '原生类型继续使用当前本地提示词与函数配置流。' }}
+      </div>
     </div>
     <div style="display: flex;margin: 15px 15px;gap: 7px;">
       <div class="dialog-btn" @click="confirm">
@@ -39,7 +49,8 @@ export default {
   data() {
     return {
       wisdomBodyName: "",
-      inputRef: null
+      inputRef: null,
+      agentType: "native"
     }
   },
   methods: {
@@ -53,7 +64,7 @@ export default {
         this.$message.error(this.$t('addAgentDialog.nameRequired'));
         return;
       }
-      Api.agent.addAgent(this.wisdomBodyName, (res) => {
+      Api.agent.addAgent(this.wisdomBodyName, this.agentType, (res) => {
         this.$message.success({
           message: this.$t('addAgentDialog.addSuccess'),
           showClose: true
@@ -61,14 +72,17 @@ export default {
         this.$emit('confirm', res);
         this.$emit('update:visible', false);
         this.wisdomBodyName = "";
+        this.agentType = "native";
       });
     },
     cancel() {
       this.$emit('update:visible', false)
       this.wisdomBodyName = ""
+      this.agentType = "native";
     },
     handleClose() {
       this.$emit('update:visible', false);
+      this.agentType = "native";
     },
   }
 }

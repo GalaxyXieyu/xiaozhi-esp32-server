@@ -15,6 +15,18 @@ from core.utils.util import remove_punctuation_and_length
 from core.providers.tts.dto.dto import TTSMessageDTO, SentenceType
 
 TAG = __name__
+DEFAULT_SWITCH_PREFIXES = (
+    "切换到",
+    "切换",
+    "切到",
+    "切换成",
+    "换成",
+    "换",
+    "换到",
+    "绑定到",
+    "转到",
+    "使用",
+)
 
 
 async def handle_user_intent(conn: "ConnectionHandler", text):
@@ -41,6 +53,9 @@ async def handle_user_intent(conn: "ConnectionHandler", text):
     if await checkWakeupWords(conn, filtered_text):
         return True
 
+    if await try_handle_openclaw_switch_intent(conn, text):
+        return True
+
     if conn.intent_type == "function_call":
         # 使用支持function calling的聊天方法,不再进行意图分析
         return False
@@ -62,7 +77,6 @@ async def check_direct_exit(conn: "ConnectionHandler", text):
         if text == cmd:
             conn.logger.bind(tag=TAG).info(f"识别到明确的退出命令: {text}")
             await send_stt_message(conn, text)
-            conn.is_exiting = True
             await conn.close()
             return True
     return False
@@ -238,3 +252,95 @@ def speak_txt(conn: "ConnectionHandler", text):
         )
     )
     conn.dialogue.put(Message(role="assistant", content=text))
+
+
+async def try_handle_openclaw_switch_intent(
+    conn: "ConnectionHandler", original_text: str
+) -> bool:
+    hub_config = conn.config.get("openclaw_hub", {}) or {}
+    bridge_config = conn.config.get("openclaw_bridge", {}) or {}
+    hub = getattr(getattr(conn, "server", None), "openclaw_hub", None)
+    bridge = getattr(conn, "openclaw_bridge", None)
+
+    if hub_config.get("enabled", False):
+        if hub is None or not getattr(hub, "enabled", False):
+            return False
+    elif bridge_config.get("enabled", False):
+        if bridge is None or not getattr(bridge, "enabled", False):
+            return False
+    else:
+        return False
+
+    switch_config = _get_openclaw_switch_config(conn)
+    aliases = switch_config.get("aliases", {})
+    if not isinstance(aliases, dict) or not aliases:
+        return False
+
+    _, normalized_text = remove_punctuation_and_length(original_text)
+    if not normalized_text:
+        return False
+
+    matched_alias, agent_id = _match_openclaw_agent_alias(
+        normalized_text,
+        aliases,
+        switch_config,
+    )
+    if not matched_alias or not agent_id:
+        return False
+
+    await send_stt_message(conn, original_text)
+    conn.client_abort = False
+    conn.sentence_id = str(uuid.uuid4().hex)
+
+    try:
+        result = await bridge.bind_peer_agent(
+            agent_id=agent_id,
+            agent_name=matched_alias,
+        )
+        confirmation = result.get("confirmation")
+        if not confirmation:
+            template = switch_config.get(
+                "confirmation_template",
+                "好的，已切换到{agent_name}",
+            )
+            confirmation = template.format(
+                agent_name=matched_alias,
+                agent_id=result.get("agentId", agent_id),
+            )
+        speak_txt(conn, confirmation)
+    except Exception as e:
+        conn.logger.bind(tag=TAG).error(f"OpenClaw 切换 agent 失败: {e}")
+        speak_txt(conn, "切换助理失败了，请稍后再试")
+
+    return True
+
+
+def _match_openclaw_agent_alias(
+    normalized_text: str,
+    aliases: dict,
+    switch_config: dict,
+):
+    prefixes = switch_config.get("prefixes") or list(DEFAULT_SWITCH_PREFIXES)
+    allow_alias_only = bool(switch_config.get("allow_alias_only", False))
+
+    for alias, agent_id in aliases.items():
+        _, normalized_alias = remove_punctuation_and_length(str(alias))
+        if not normalized_alias:
+            continue
+
+        if allow_alias_only and normalized_text == normalized_alias:
+            return alias, str(agent_id)
+
+        for prefix in prefixes:
+            candidate = f"{prefix}{normalized_alias}"
+            if normalized_text == candidate:
+                return alias, str(agent_id)
+
+    return None, None
+
+
+def _get_openclaw_switch_config(conn: "ConnectionHandler") -> dict:
+    hub_config = conn.config.get("openclaw_hub", {}) or {}
+    if hub_config.get("enabled", False):
+        return hub_config.get("switch_agent", {}) or {}
+    return conn.config.get("openclaw_bridge", {}).get("switch_agent", {}) or {}

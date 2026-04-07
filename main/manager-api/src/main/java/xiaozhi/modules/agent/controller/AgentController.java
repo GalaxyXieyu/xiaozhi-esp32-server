@@ -56,6 +56,7 @@ import xiaozhi.modules.agent.vo.AgentChatHistoryUserVO;
 import xiaozhi.modules.agent.vo.AgentInfoVO;
 import xiaozhi.modules.device.entity.DeviceEntity;
 import xiaozhi.modules.device.service.DeviceService;
+import xiaozhi.modules.openclaw.service.OpenClawConfigService;
 import xiaozhi.modules.security.user.SecurityUser;
 
 @Tag(name = "智能体管理")
@@ -73,6 +74,7 @@ public class AgentController {
     private final AgentChatSummaryService agentChatSummaryService;
     private final RedisUtils redisUtils;
     private final AgentTagService agentTagService;
+    private final OpenClawConfigService openClawConfigService;
 
     @GetMapping("/list")
     @Operation(summary = "获取用户智能体列表")
@@ -113,6 +115,7 @@ public class AgentController {
     @RequiresPermissions("sys:role:normal")
     public Result<String> save(@RequestBody @Valid AgentCreateDTO dto) {
         String agentId = agentService.createAgent(dto);
+        openClawConfigService.ensureAgentType(agentId, dto.getAgentType());
         return new Result<String>().ok(agentId);
     }
 

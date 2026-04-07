@@ -1,0 +1,607 @@
+from aiohttp import web
+
+from core.api.base_handler import BaseHandler
+
+TAG = __name__
+
+
+class OpenClawAdminHandler(BaseHandler):
+    def __init__(
+        self,
+        config: dict,
+        openclaw_hub=None,
+        connection_registry=None,
+        websocket_server=None,
+    ):
+        super().__init__(config)
+        self.openclaw_hub = openclaw_hub
+        self.connection_registry = connection_registry
+        self.websocket_server = websocket_server
+        self.hub_config = config.get("openclaw_hub", {}) or {}
+
+    def _get_admin_key(self) -> str:
+        admin_key = (self.hub_config.get("admin_key") or "").strip()
+        if admin_key:
+            return admin_key
+        return (self.config.get("server", {}).get("auth_key") or "").strip()
+
+    def _is_authorized(self, request: web.Request) -> bool:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return False
+        return auth_header[7:].strip() == self._get_admin_key()
+
+    def _get_connection_registry(self):
+        if self.connection_registry is not None:
+            return self.connection_registry
+        if self.openclaw_hub is None:
+            return None
+        return getattr(self.openclaw_hub, "connection_registry", None)
+
+    def _get_voice_interrupt_enabled(self) -> bool:
+        if self.websocket_server is not None:
+            return bool(self.websocket_server.config.get("enable_voice_interrupt", True))
+        return bool(self.config.get("enable_voice_interrupt", True))
+
+    def _parse_bool(self, value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "enabled"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "disabled"}:
+                return False
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return None
+
+    def _normalize_option(self, value, label=None):
+        final_value = (value or "").strip()
+        final_label = (label or value or "").strip()
+        if not final_value:
+            return None
+        return {"value": final_value, "label": final_label or final_value}
+
+    def _normalize_runtime_option(self, bridge: dict, inventory: dict | None = None):
+        runtime_option = None
+        if isinstance(inventory, dict):
+            runtime_account = inventory.get("runtimeAccount")
+            if isinstance(runtime_account, dict):
+                runtime_option = self._normalize_option(
+                    str(runtime_account.get("value") or runtime_account.get("accountId") or ""),
+                    str(runtime_account.get("label") or runtime_account.get("name") or ""),
+                )
+
+        if runtime_option is not None:
+            return runtime_option
+
+        account_id = str(bridge.get("account") or "").strip()
+        label = (
+            str(bridge.get("name") or "").strip()
+            or str(bridge.get("bridgeId") or "").strip()
+            or account_id
+        )
+        return self._normalize_option(account_id, label)
+
+    def _normalize_agent_options(self, agents) -> list[dict]:
+        if not isinstance(agents, list):
+            return []
+
+        normalized: list[dict] = []
+        seen: set[str] = set()
+        for item in agents:
+            option = None
+            if isinstance(item, dict):
+                option = self._normalize_option(
+                    str(
+                        item.get("value")
+                        or item.get("id")
+                        or item.get("agentId")
+                        or item.get("key")
+                        or ""
+                    ),
+                    str(
+                        item.get("label")
+                        or item.get("name")
+                        or item.get("agentName")
+                        or item.get("title")
+                        or item.get("id")
+                        or item.get("agentId")
+                        or ""
+                    ),
+                )
+            elif isinstance(item, str):
+                option = self._normalize_option(item, item)
+
+            if option is None or option["value"] in seen:
+                continue
+            seen.add(option["value"])
+            normalized.append(option)
+        return normalized
+
+    async def _require_auth(self, request: web.Request):
+        if self._is_authorized(request):
+            return None
+        response = web.json_response(
+            {"ok": False, "message": "unauthorized"},
+            status=401,
+        )
+        self._add_cors_headers(response)
+        return response
+
+    async def get_voice_interrupt(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        response = web.json_response(
+            {
+                "ok": True,
+                "enabled": self._get_voice_interrupt_enabled(),
+            }
+        )
+        self._add_cors_headers(response)
+        return response
+
+    async def set_voice_interrupt(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        enabled = self._parse_bool(data.get("enabled"))
+        if enabled is None:
+            response = web.json_response(
+                {"ok": False, "message": "enabled 必须是布尔值"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        self.config["enable_voice_interrupt"] = enabled
+        if self.websocket_server is not None:
+            self.websocket_server.config["enable_voice_interrupt"] = enabled
+
+        updated = {"enabled": enabled, "updatedCount": 0}
+        registry = self._get_connection_registry()
+        if registry is not None:
+            updated = await registry.set_voice_interrupt_enabled(enabled)
+
+        response = web.json_response(
+            {
+                "ok": True,
+                "enabled": enabled,
+                "updatedConnections": updated.get("updatedCount", 0),
+            }
+        )
+        self._add_cors_headers(response)
+        return response
+
+    async def issue_bridge_token(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {"ok": False, "message": "openclaw hub 未启用"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        try:
+            issued = await self.openclaw_hub.issue_bridge_token(
+                name=data.get("name"),
+                bridge_id=data.get("bridgeId"),
+                account=data.get("account"),
+                peer_id_mode=data.get("peerIdMode"),
+                default_agent_id=data.get("defaultAgentId"),
+                is_default=data.get("isDefault"),
+            )
+            response = web.json_response(
+                {
+                    "ok": True,
+                    "bridge": issued["bridge"],
+                    "token": issued["token"],
+                    "bridgeWebSocketUrl": self.openclaw_hub.build_bridge_ws_url(request),
+                }
+            )
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"签发 OpenClaw bridge token 失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def revoke_bridge_token(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {"ok": False, "message": "openclaw hub 未启用"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        bridge_id = (data.get("bridgeId") or "").strip()
+        if not bridge_id:
+            response = web.json_response(
+                {"ok": False, "message": "bridgeId 不能为空"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            bridge = await self.openclaw_hub.revoke_bridge(bridge_id)
+            response = web.json_response({"ok": True, "bridge": bridge})
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"撤销 OpenClaw bridge token 失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def list_bridges(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {"ok": False, "message": "openclaw hub 未启用"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        response = web.json_response(
+            {
+                "ok": True,
+                "bridges": await self.openclaw_hub.list_bridges(),
+                "bridgeWebSocketPath": self.hub_config.get(
+                    "bridge_ws_path", "/openclaw/bridge/ws"
+                ),
+            }
+        )
+        self._add_cors_headers(response)
+        return response
+
+    async def get_inventory(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {
+                    "ok": False,
+                    "healthy": False,
+                    "message": "openclaw hub 未启用",
+                    "errorMessage": "openclaw hub 未启用",
+                    "runtimeAccounts": [],
+                    "agents": [],
+                    "bridges": [],
+                    "accountAgents": {},
+                },
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        account = (request.query.get("account") or "").strip() or None
+        bridge_id = (request.query.get("bridgeId") or "").strip() or None
+        inventory_method = self.hub_config.get("inventory_method", "xiaozhi.inventory")
+
+        try:
+            bridges = await self.openclaw_hub.list_bridges()
+            if bridge_id:
+                bridges = [item for item in bridges if item.get("bridgeId") == bridge_id]
+            elif account:
+                bridges = [item for item in bridges if item.get("account") == account]
+
+            runtime_accounts: list[dict] = []
+            account_agents: dict[str, list[dict]] = {}
+            merged_agents: list[dict] = []
+            seen_runtime_values: set[str] = set()
+            seen_agent_values: set[str] = set()
+            errors: list[str] = []
+            success_count = 0
+
+            for bridge in bridges:
+                base_runtime = self._normalize_runtime_option(bridge)
+                if base_runtime and base_runtime["value"] not in seen_runtime_values:
+                    seen_runtime_values.add(base_runtime["value"])
+                    runtime_accounts.append(base_runtime)
+
+                if not bridge.get("connected"):
+                    continue
+
+                try:
+                    result = await self.openclaw_hub.request(
+                        inventory_method,
+                        {
+                            "account": bridge.get("account"),
+                            "bridgeId": bridge.get("bridgeId"),
+                        },
+                        bridge_id=bridge.get("bridgeId"),
+                        account=bridge.get("account"),
+                    )
+                    if not isinstance(result, dict):
+                        raise RuntimeError("inventory 响应格式无效")
+
+                    runtime_option = self._normalize_runtime_option(bridge, result)
+                    if runtime_option and runtime_option["value"] not in seen_runtime_values:
+                        seen_runtime_values.add(runtime_option["value"])
+                        runtime_accounts.append(runtime_option)
+
+                    account_key = runtime_option["value"] if runtime_option else str(
+                        bridge.get("account") or ""
+                    ).strip()
+                    account_agent_list = self._normalize_agent_options(result.get("agents"))
+                    if account_key:
+                        account_agents[account_key] = account_agent_list
+
+                    for option in account_agent_list:
+                        if option["value"] in seen_agent_values:
+                            continue
+                        seen_agent_values.add(option["value"])
+                        merged_agents.append(option)
+
+                    success_count += 1
+                except Exception as e:
+                    self.logger.bind(tag=TAG).error(
+                        f"获取 OpenClaw inventory 失败: bridge={bridge.get('bridgeId')}, error={e}"
+                    )
+                    errors.append(
+                        f"{bridge.get('name') or bridge.get('bridgeId')}: {e}"
+                    )
+
+            if not bridges:
+                error_message = "未找到可用的 OpenClaw bridge"
+            elif success_count == 0 and errors:
+                error_message = "；".join(errors)
+            elif success_count == 0:
+                error_message = "当前没有在线的 OpenClaw bridge"
+            else:
+                error_message = "；".join(errors)
+
+            response = web.json_response(
+                {
+                    "ok": True,
+                    "healthy": success_count > 0,
+                    "runtimeAccounts": runtime_accounts,
+                    "agents": merged_agents,
+                    "bridges": bridges,
+                    "accountAgents": account_agents,
+                    "errorMessage": error_message,
+                }
+            )
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"聚合 OpenClaw inventory 失败: {e}")
+            response = web.json_response(
+                {
+                    "ok": False,
+                    "healthy": False,
+                    "message": str(e),
+                    "errorMessage": str(e),
+                    "runtimeAccounts": [],
+                    "agents": [],
+                    "bridges": [],
+                    "accountAgents": {},
+                },
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def list_connections(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        registry = self._get_connection_registry()
+        if registry is None:
+            response = web.json_response(
+                {"ok": False, "message": "xiaozhi 连接注册表未初始化"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        response = web.json_response(
+            {
+                "ok": True,
+                "connections": await registry.list_connections(),
+            }
+        )
+        self._add_cors_headers(response)
+        return response
+
+    async def push_text(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        registry = self._get_connection_registry()
+        if registry is None:
+            response = web.json_response(
+                {"ok": False, "message": "xiaozhi 连接注册表未初始化"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        text = (data.get("text") or "").strip()
+        if not text:
+            response = web.json_response(
+                {"ok": False, "message": "text 不能为空"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            result = await registry.push_text(
+                text=text,
+                session_id=(data.get("sessionId") or "").strip() or None,
+                device_id=(data.get("deviceId") or "").strip() or None,
+                peer_id=(data.get("peerId") or "").strip() or None,
+                allow_latest=bool(data.get("allowLatest", True)),
+            )
+            response = web.json_response({"ok": True, "result": result})
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"管理员手动推送小智语音失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def chat(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        registry = self._get_connection_registry()
+        if registry is None:
+            response = web.json_response(
+                {"ok": False, "message": "xiaozhi 连接注册表未初始化"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        text = (data.get("text") or "").strip()
+        if not text:
+            response = web.json_response(
+                {"ok": False, "message": "text 不能为空"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            result = await registry.relay_chat(
+                text=text,
+                session_id=(data.get("sessionId") or "").strip() or None,
+                device_id=(data.get("deviceId") or "").strip() or None,
+                peer_id=(data.get("peerId") or "").strip() or None,
+                allow_latest=bool(data.get("allowLatest", True)),
+            )
+            response = web.json_response({"ok": True, "result": result})
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"管理员代发小智聊天失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def clear_session(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {"ok": False, "message": "openclaw hub 未启用"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        account = (data.get("account") or "default").strip() or "default"
+        session_id = (data.get("sessionId") or "").strip() or None
+        device_id = (data.get("deviceId") or "").strip() or None
+        peer_id = (data.get("peerId") or "").strip() or None
+        bridge_id = (data.get("bridgeId") or "").strip() or None
+
+        if not any((session_id, device_id, peer_id)) and bool(
+            data.get("allowLatest", True)
+        ):
+            registry = self._get_connection_registry()
+            if registry is not None:
+                connections = await registry.list_connections()
+                if connections:
+                    session_id = session_id or connections[0].get("sessionId")
+                    device_id = device_id or connections[0].get("deviceId")
+
+        if not any((session_id, device_id, peer_id)):
+            response = web.json_response(
+                {
+                    "ok": False,
+                    "message": "sessionId、deviceId、peerId 至少需要提供一个",
+                },
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            result = await self.openclaw_hub.request(
+                self.hub_config.get("clear_session_method", "xiaozhi.clearPeerSession"),
+                {
+                    "account": account,
+                    "sessionId": session_id,
+                    "deviceId": device_id,
+                    "peerId": peer_id,
+                },
+                bridge_id=bridge_id,
+                account=account,
+            )
+            response = web.json_response({"ok": True, "result": result})
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"管理员清理 OpenClaw 会话失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response

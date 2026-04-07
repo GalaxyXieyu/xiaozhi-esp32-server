@@ -6,11 +6,15 @@ if TYPE_CHECKING:
 TAG = __name__
 
 
+def is_voice_interrupt_enabled(conn: "ConnectionHandler") -> bool:
+    return bool(conn.config.get("enable_voice_interrupt", True))
+
+
 async def handleAbortMessage(conn: "ConnectionHandler"):
-    if conn.close_after_chat or conn.is_exiting:
-        conn.logger.bind(tag=TAG).info("退出流程中被打断，直接关闭连接")
-        return
-        
+    if not is_voice_interrupt_enabled(conn):
+        conn.logger.bind(tag=TAG).info("Abort ignored: voice interrupt is disabled")
+        return False
+
     conn.logger.bind(tag=TAG).info("Abort message received")
     # 设置成打断状态，会自动打断llm、tts任务
     conn.client_abort = True
@@ -21,3 +25,4 @@ async def handleAbortMessage(conn: "ConnectionHandler"):
     )
     conn.clearSpeakStatus()
     conn.logger.bind(tag=TAG).info("Abort message received-end")
+    return True

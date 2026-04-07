@@ -19,18 +19,22 @@ export default {
             }).send();
     },
     // 添加智能体
-    addAgent(agentName, callback) {
+    addAgent(agentName, agentType, callback) {
+        if (typeof agentType === 'function') {
+            callback = agentType;
+            agentType = 'native';
+        }
         RequestService.sendRequest()
             .url(`${getServiceUrl()}/agent`)
             .method('POST')
-            .data({ agentName: agentName })
+            .data({ agentName: agentName, agentType: agentType || 'native' })
             .success((res) => {
                 RequestService.clearRequestTime();
                 callback(res);
             })
             .networkFail(() => {
                 RequestService.reAjaxFun(() => {
-                    this.addAgent(agentName, callback);
+                    this.addAgent(agentName, agentType, callback);
                 });
             }).send();
     },

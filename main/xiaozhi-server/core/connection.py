@@ -38,6 +38,8 @@ from config.config_loader import get_private_config_from_api
 from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
 from config.logger import setup_logging, build_module_string, create_connection_logger
 from config.manage_api_client import DeviceNotFoundException, DeviceBindException
+from core.openclaw import OpenClawBridgeClient, OpenClawHubSession
+from core.openclaw.spoken_text import extract_spoken_text
 from core.utils.prompt_manager import PromptManager
 from core.utils.voiceprint_provider import VoiceprintProvider
 from core.utils.util import get_system_error_response
@@ -152,6 +154,7 @@ class ConnectionHandler:
 
         # 为每个连接单独管理声纹识别
         self.voiceprint_provider = None
+        self.openclaw_bridge = None
 
         # vad相关变量
         self.client_audio_buffer = bytearray()
@@ -230,6 +233,9 @@ class ConnectionHandler:
 
             # 认证通过,继续处理
             self.websocket = ws
+            connection_registry = getattr(self.server, "connection_registry", None)
+            if connection_registry is not None:
+                await connection_registry.register(self)
 
             # 检查是否来自MQTT连接
             request_path = ws.request.path
@@ -329,10 +335,6 @@ class ConnectionHandler:
 
     async def _route_message(self, message):
         """消息路由"""
-        # 退出状态丢弃所有消息
-        if self.is_exiting:
-           return
-
         # 检查是否已经获取到真实的绑定状态
         if not self.bind_completed_event.is_set():
             # 还没有获取到真实状态，等待直到获取到真实状态或超时
@@ -521,6 +523,8 @@ class ConnectionHandler:
             self._initialize_memory()
             """加载意图识别"""
             self._initialize_intent()
+            """初始化 OpenClaw bridge"""
+            self._initialize_openclaw_bridge()
             """初始化上报线程"""
             self._init_report_threads()
             """更新系统提示词"""
@@ -836,6 +840,172 @@ class ConnectionHandler:
         self.prompt = prompt
         # 更新系统prompt至上下文
         self.dialogue.update_system_message(self.prompt)
+
+    def _initialize_openclaw_bridge(self):
+        hub_config = self.config.get("openclaw_hub", {}) or {}
+        if hub_config.get("enabled", False) and getattr(self.server, "openclaw_hub", None):
+            self.openclaw_bridge = OpenClawHubSession(self)
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw relay 已初始化: mode=hub, "
+                f"account={hub_config.get('default_account', 'default')}, "
+                f"relay_chat={hub_config.get('relay_chat', False)}"
+            )
+            return
+
+        bridge_config = self.config.get("openclaw_bridge", {}) or {}
+        if not bridge_config.get("enabled", False):
+            return
+
+        self.openclaw_bridge = OpenClawBridgeClient(self)
+        self.logger.bind(tag=TAG).info(
+            "OpenClaw relay 已初始化: mode=bridge, "
+            f"account={bridge_config.get('account', 'default')}, "
+            f"relay_chat={bridge_config.get('relay_chat', False)}"
+        )
+        if hasattr(self, "loop") and self.loop:
+            asyncio.run_coroutine_threadsafe(self.openclaw_bridge.connect(), self.loop)
+
+    def is_openclaw_relay_enabled(self) -> bool:
+        return bool(
+            self.openclaw_bridge and self.openclaw_bridge.relay_chat_enabled()
+        )
+
+    async def relay_chat_to_openclaw(self, query: str) -> bool:
+        bridge = self.openclaw_bridge
+        bridge_type = bridge.__class__.__name__ if bridge else "none"
+        relay_enabled = self.is_openclaw_relay_enabled()
+        if not relay_enabled:
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw relay 跳过: relay_enabled=False, "
+                f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
+            )
+            return False
+
+        try:
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw relay 开始: "
+                f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
+            )
+            connected = await bridge.connect()
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw relay connect 结果: "
+                f"connected={connected}, bridge={bridge_type}, "
+                f"device={self.device_id}, session={self.session_id}"
+            )
+            if not connected:
+                if bridge.fallback_to_local_on_error():
+                    self.logger.bind(tag=TAG).warning(
+                        "OpenClaw relay 回退本地: connect=False, "
+                        f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
+                    )
+                    return False
+                await self._reply_with_openclaw_error()
+                return True
+
+            result = await bridge.chat(query)
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw relay 收到响应: "
+                f"result_type={type(result).__name__}, bridge={bridge_type}, "
+                f"device={self.device_id}, session={self.session_id}"
+            )
+            response_text = self._extract_openclaw_response_text(result)
+            if not response_text:
+                raise RuntimeError("OpenClaw bridge 没有返回可播报文本")
+
+            from core.handle.intentHandler import speak_txt
+
+            self.sentence_id = str(uuid.uuid4().hex)
+            self.dialogue.put(Message(role="user", content=query))
+            speak_txt(self, response_text)
+            return True
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"OpenClaw bridge 转发失败: {e}")
+            if bridge and bridge.fallback_to_local_on_error():
+                self.logger.bind(tag=TAG).warning(
+                    "OpenClaw relay 异常后回退本地: "
+                    f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
+                )
+                return False
+            await self._reply_with_openclaw_error()
+            return True
+
+    async def _reply_with_openclaw_error(self):
+        from core.handle.intentHandler import speak_txt
+
+        self.sentence_id = str(uuid.uuid4().hex)
+        speak_txt(self, get_system_error_response(self.config))
+
+    async def _wait_for_push_tts_ready(self, timeout_seconds: float = 8.0):
+        if not self.bind_completed_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    self.bind_completed_event.wait(), timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError("小智连接尚未完成初始化，暂时无法主动播报") from exc
+
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            tts = self.tts
+            if (
+                tts is not None
+                and getattr(tts, "tts_text_queue", None) is not None
+                and getattr(tts, "tts_audio_queue", None) is not None
+            ):
+                return tts
+
+            websocket = self.websocket
+            if websocket is None or getattr(websocket, "closed", False):
+                raise RuntimeError("小智设备连接已断开，无法主动播报")
+
+            await asyncio.sleep(0.05)
+
+        raise RuntimeError("小智连接的TTS尚未就绪，暂时无法主动播报")
+
+    async def push_text_from_openclaw(self, text: str):
+        from core.handle.sendAudioHandle import send_tts_message
+
+        message = extract_spoken_text(text)
+        if not message:
+            raise RuntimeError("OpenClaw push 缺少播报文本")
+
+        tts = await self._wait_for_push_tts_ready()
+
+        self.logger.bind(tag=TAG).info(
+            "OpenClaw 主动推送播报: "
+            f"device={self.device_id}, session={self.session_id}, textLength={len(message)}"
+        )
+
+        # 主动推送默认抢占当前播报，确保设备进入可播放状态。
+        self.client_abort = True
+        self.clear_queues()
+        await send_tts_message(self, "stop", None)
+        self.clearSpeakStatus()
+        self.client_abort = False
+        await send_tts_message(self, "start", None)
+        self.client_is_speaking = True
+
+        self.sentence_id = str(uuid.uuid4().hex)
+        self.tts_MessageText = message
+        tts.tts_text_queue.put(
+            TTSMessageDTO(
+                sentence_id=self.sentence_id,
+                sentence_type=SentenceType.FIRST,
+                content_type=ContentType.ACTION,
+            )
+        )
+        tts.tts_one_sentence(self, ContentType.TEXT, content_detail=message)
+        tts.tts_text_queue.put(
+            TTSMessageDTO(
+                sentence_id=self.sentence_id,
+                sentence_type=SentenceType.LAST,
+                content_type=ContentType.ACTION,
+            )
+        )
+        self.dialogue.put(Message(role="assistant", content=message))
+
+    def _extract_openclaw_response_text(self, result) -> str:
+        return extract_spoken_text(result)
 
     def chat(self, query, depth=0):
         if query is not None:
@@ -1289,6 +1459,10 @@ class ConnectionHandler:
     async def close(self, ws=None):
         """资源清理方法"""
         try:
+            connection_registry = getattr(self.server, "connection_registry", None)
+            if connection_registry is not None:
+                await connection_registry.unregister(self)
+
             # 清理 VAD 连接资源
             if (
                     hasattr(self, "vad")
@@ -1317,6 +1491,14 @@ class ConnectionHandler:
                 except Exception as cleanup_error:
                     self.logger.bind(tag=TAG).error(
                         f"清理工具处理器时出错: {cleanup_error}"
+                    )
+
+            if self.openclaw_bridge:
+                try:
+                    await self.openclaw_bridge.close()
+                except Exception as bridge_error:
+                    self.logger.bind(tag=TAG).error(
+                        f"关闭 OpenClaw bridge 时出错: {bridge_error}"
                     )
 
             # 触发停止事件

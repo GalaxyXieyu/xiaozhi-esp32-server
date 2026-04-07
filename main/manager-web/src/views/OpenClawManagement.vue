@@ -4,15 +4,13 @@
 
     <div class="operation-bar">
       <div class="title-block">
-        <h2 class="page-title">OpenClaw 控制台</h2>
-        <p class="page-subtitle">围绕单个智能体聚合 MCP 接入、工具能力和函数映射。</p>
+        <h2 class="page-title">OpenClaw Channel 设置</h2>
+        <p class="page-subtitle">把 Channel 保存下来，系统生成命令给用户复制到 OpenClaw 目录执行，不再暴露底层接入参数。</p>
       </div>
       <div class="page-actions">
-        <el-button class="ghost-btn" @click="goToRoleConfig">返回角色配置</el-button>
-        <el-button class="ghost-btn" @click="goToFunctionConfig">编辑函数配置</el-button>
-        <el-button type="primary" class="refresh-btn" :loading="loading" @click="refreshSurface">
-          刷新
-        </el-button>
+        <el-button class="ghost-btn" @click="goToRoleConfig">返回智能体配置</el-button>
+        <el-button class="ghost-btn" @click="resetDraft">新建 Channel</el-button>
+        <el-button type="primary" class="refresh-btn" :loading="loading" @click="loadChannels">刷新</el-button>
       </div>
     </div>
 
@@ -21,147 +19,218 @@
         <div
           class="content-area"
           v-loading="loading"
-          element-loading-text="正在刷新 OpenClaw 控制面"
+          element-loading-text="正在加载 OpenClaw channel 配置"
           element-loading-spinner="el-icon-loading"
           element-loading-background="rgba(255, 255, 255, 0.72)"
         >
-          <el-alert
-            v-if="!agentId"
-            title="缺少 agentId，当前无法加载 OpenClaw 管理页"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="top-alert"
-          />
-
-          <template v-else>
-            <div class="hero-card">
-              <div class="hero-main">
-                <div class="hero-label">Web 主控制面</div>
-                <h3 class="hero-title">{{ agentName }}</h3>
-                <p class="hero-description">
-                  当前页面把散落在函数配置抽屉里的 MCP 能力收口成一条可见、可达、可操作的 OpenClaw 路径。
-                </p>
+          <div class="hero-card">
+            <div class="hero-main">
+              <div class="hero-label">Command Driven</div>
+              <h3 class="hero-title">保存 Channel，复制命令，回到这里测试</h3>
+              <p class="hero-description">
+                这页只负责维护 OpenClaw channel 和安装命令。用户不用再理解 `baseUrl / inventoryPath / accessToken`，
+                只要在 OpenClaw 目录执行生成好的 `npx` 命令，再回来同步 inventory 即可。
+              </p>
+            </div>
+            <div class="hero-meta">
+              <div class="meta-pill">
+                <span class="meta-key">已配置 Channel</span>
+                <span class="meta-value">{{ channels.length }}</span>
               </div>
-              <div class="hero-meta">
-                <div class="meta-pill">
-                  <span class="meta-key">Agent ID</span>
-                  <span class="meta-value">{{ agentId }}</span>
-                </div>
-                <div class="meta-pill">
-                  <span class="meta-key">状态</span>
-                  <span class="meta-value">{{ surfaceStatusText }}</span>
-                </div>
-                <div class="meta-pill">
-                  <span class="meta-key">上次刷新</span>
-                  <span class="meta-value">{{ refreshedAtText }}</span>
-                </div>
+              <div class="meta-pill">
+                <span class="meta-key">命令状态</span>
+                <span class="meta-value">{{ commandStatusText }}</span>
+              </div>
+              <div class="meta-pill">
+                <span class="meta-key">Inventory 状态</span>
+                <span class="meta-value">{{ inventoryStatusText }}</span>
               </div>
             </div>
+          </div>
 
+          <div class="surface-grid">
+            <el-card class="surface-card" shadow="never">
+              <div class="section-header">
+                <div>
+                  <div class="section-eyebrow">Channel Registry</div>
+                  <h3>已绑定 Channel</h3>
+                </div>
+                <span class="tool-count">{{ channels.length }} 个</span>
+              </div>
+              <p class="section-description">
+                智能体表单只会消费这里的 channel。保存后，每个 channel 都有自己的 account id 和接入命令。
+              </p>
+              <div v-if="channels.length" class="channel-list">
+                <button
+                  v-for="item in channels"
+                  :key="item.id"
+                  class="channel-item"
+                  :class="{ active: item.id === draft.id }"
+                  @click="selectChannel(item)"
+                >
+                  <div class="channel-item-main">
+                    <span class="channel-name">{{ item.name || "未命名 channel" }}</span>
+                    <el-tag size="mini" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? '启用' : '停用' }}</el-tag>
+                  </div>
+                  <span class="channel-url">Account: {{ item.id }}</span>
+                </button>
+              </div>
+              <el-empty v-else description="尚未绑定 OpenClaw channel" :image-size="88" />
+            </el-card>
+
+            <el-card class="surface-card" shadow="never">
+              <div class="section-header">
+                <div>
+                  <div class="section-eyebrow">Channel Editor</div>
+                  <h3>{{ draft.id ? "编辑 Channel" : "新增 Channel" }}</h3>
+                </div>
+                <div class="inline-actions">
+                  <el-button size="small" @click="resetDraft">清空</el-button>
+                  <el-button size="small" type="danger" plain :disabled="!draft.id" @click="removeDraftChannel">删除</el-button>
+                </div>
+              </div>
+              <p class="section-description">
+                主流程只需要填写名称。保存后系统会生成 account id、安装命令和后台接入参数。
+              </p>
+              <div class="step-list">
+                <div class="step-item">
+                  <span class="step-index">1</span>
+                  <span>填写 Channel 名称并保存</span>
+                </div>
+                <div class="step-item">
+                  <span class="step-index">2</span>
+                  <span>复制命令到 OpenClaw 项目目录执行</span>
+                </div>
+                <div class="step-item">
+                  <span class="step-index">3</span>
+                  <span>执行完成后回来点击“测试并拉取 Inventory”</span>
+                </div>
+              </div>
+              <el-form label-position="top" class="channel-form">
+                <el-form-item label="Channel 名称">
+                  <el-input v-model="draft.name" maxlength="64" placeholder="例如：生产 Runtime" />
+                </el-form-item>
+                <el-form-item label="备注">
+                  <el-input v-model="draft.remark" type="textarea" :rows="3" resize="none" maxlength="200" placeholder="可选，用于记录用途或环境说明" />
+                </el-form-item>
+                <div class="channel-toggle">
+                  <span>启用该 channel</span>
+                  <el-switch v-model="draft.enabled" />
+                </div>
+                <div class="channel-actions">
+                  <el-button type="primary" @click="saveChannels" :loading="saving">保存 Channel 配置</el-button>
+                  <el-button @click="copyInstallCommand" :disabled="!setupGuide.installCommand">复制安装命令</el-button>
+                  <el-button @click="syncDraftInventory" :loading="inventoryLoading" :disabled="!draft.id">测试并拉取 Inventory</el-button>
+                </div>
+              </el-form>
+
+              <div class="command-panel" v-loading="guideLoading">
+                <div class="command-header">
+                  <div>
+                    <div class="section-eyebrow">Setup Command</div>
+                    <h4 class="command-title">可复制的 OpenClaw 安装命令</h4>
+                  </div>
+                  <el-tag size="mini" :type="setupGuide.installCommand ? 'success' : 'info'">{{ commandStatusText }}</el-tag>
+                </div>
+                <div class="command-meta">
+                  <div class="meta-line">
+                    <span class="meta-line-key">Account ID</span>
+                    <span class="meta-line-value">{{ setupGuide.channelId || '保存后自动生成' }}</span>
+                  </div>
+                  <div class="meta-line">
+                    <span class="meta-line-key">默认 Agent</span>
+                    <span class="meta-line-value">{{ setupGuide.defaultAgentId || 'main' }}</span>
+                  </div>
+                </div>
+                <el-alert
+                  v-if="!setupGuide.accessTokenConfigured && draft.id"
+                  title="系统未检测到 server secret，当前无法生成可执行命令，请先补齐后台 server.secret。"
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                  class="top-alert"
+                />
+                <el-input
+                  type="textarea"
+                  :rows="6"
+                  resize="none"
+                  readonly
+                  class="command-textarea"
+                  :value="setupGuide.installCommand || '先保存 Channel，系统会在这里生成可直接复制的 npx 命令。'"
+                />
+                <div class="command-hint">
+                  命令示例用法：进入 OpenClaw 项目目录后执行即可，例如 `cd ~/openclaw && ...`。命令里已经带好 server、admin key、account 和 channel 名称。
+                </div>
+              </div>
+
+              <el-collapse v-model="advancedPanels" class="advanced-panel">
+                <el-collapse-item name="advanced" title="高级配置（通常不用改）">
+                  <el-form label-position="top" class="channel-form advanced-form">
+                    <el-form-item label="管理接口基础地址">
+                      <el-input v-model="draft.baseUrl" placeholder="默认自动生成，例如：https://example.com/admin/openclaw" />
+                    </el-form-item>
+                    <el-form-item label="Inventory 路径">
+                      <el-input v-model="draft.inventoryPath" placeholder="/inventory" />
+                    </el-form-item>
+                    <el-form-item label="Access Token">
+                      <el-input v-model="draft.accessToken" show-password placeholder="默认自动注入 server secret" />
+                    </el-form-item>
+                  </el-form>
+                </el-collapse-item>
+              </el-collapse>
+            </el-card>
+          </div>
+
+          <el-card class="surface-card wide-card" shadow="never">
+            <div class="section-header">
+              <div>
+                <div class="section-eyebrow">Inventory</div>
+                <h3>Channel 可选项</h3>
+              </div>
+              <el-tag :type="inventory.healthy ? 'success' : 'warning'">{{ inventoryStatusText }}</el-tag>
+            </div>
+            <p class="section-description">
+              这里展示 channel 实际回传的 runtime/account 与 OpenClaw agent 列表。智能体绑定页会直接消费这些下拉项。
+            </p>
             <el-alert
-              v-if="surface.agentConfigError"
-              :title="surface.agentConfigError"
-              type="error"
+              v-if="inventory.errorMessage"
+              :title="inventory.errorMessage"
+              type="warning"
               :closable="false"
               show-icon
               class="top-alert"
             />
-
-            <div class="surface-grid">
-              <el-card class="surface-card" shadow="never">
-                <div class="section-header">
-                  <div>
-                    <div class="section-eyebrow">MCP Access</div>
-                    <h3>MCP 接入点</h3>
-                  </div>
-                  <el-tag :type="surfaceStatusTag" effect="dark">{{ surfaceStatusText }}</el-tag>
-                </div>
-                <p class="section-description">
-                  当前 agent 的 MCP 暴露地址。这里提供复制和刷新，不再要求先打开函数配置抽屉。
-                </p>
-                <el-input :value="surface.mcpAccessAddress || surface.mcpAddressError || '暂未获取到 MCP 地址'" readonly>
-                  <template #suffix>
-                    <el-button type="text" @click="copyMcpAddress">复制</el-button>
-                  </template>
-                </el-input>
-                <p v-if="surface.mcpAddressError" class="error-text">{{ surface.mcpAddressError }}</p>
-                <div class="inline-actions">
-                  <el-button size="small" @click="refreshSurface">刷新 MCP</el-button>
-                  <el-button size="small" type="text" @click="goToFunctionConfig">去底层函数配置</el-button>
-                </div>
-              </el-card>
-
-              <el-card class="surface-card" shadow="never">
-                <div class="section-header">
-                  <div>
-                    <div class="section-eyebrow">Tool Surface</div>
-                    <h3>工具列表</h3>
-                  </div>
-                  <span class="tool-count">{{ surface.mcpTools.length }} 个工具</span>
-                </div>
-                <p class="section-description">
-                  当前通过 manager-api 探测到的 MCP tools。空列表和请求异常需要区分对待。
-                </p>
-                <div v-if="surface.mcpTools.length" class="tool-grid">
-                  <div v-for="tool in surface.mcpTools" :key="tool" class="tool-chip">
-                    {{ tool }}
+            <div class="inventory-grid">
+              <div class="inventory-block">
+                <div class="inventory-title">Runtime / Account</div>
+                <div v-if="inventory.runtimeAccounts.length" class="inventory-list">
+                  <div v-for="item in inventory.runtimeAccounts" :key="item.value" class="inventory-chip">
+                    {{ item.label }}
                   </div>
                 </div>
-                <el-empty v-else description="当前未探测到可用工具" :image-size="90" />
-                <p v-if="surface.mcpToolsError" class="error-text">{{ surface.mcpToolsError }}</p>
-              </el-card>
+                <el-empty v-else description="当前未返回 runtime/account 选项" :image-size="80" />
+              </div>
+              <div class="inventory-block">
+                <div class="inventory-title">OpenClaw Agents</div>
+                <div v-if="inventory.agents.length" class="inventory-list">
+                  <div v-for="item in inventory.agents" :key="item.value" class="inventory-chip">
+                    {{ item.label }}
+                  </div>
+                </div>
+                <el-empty v-else description="当前未返回 OpenClaw agent 选项" :image-size="80" />
+              </div>
             </div>
-
-            <el-card class="surface-card wide-card" shadow="never">
-              <div class="section-header">
-                <div>
-                  <div class="section-eyebrow">Function Mapping</div>
-                  <h3>函数 / 插件映射</h3>
-                </div>
-                <span class="tool-count">{{ functionMappings.length }} 条映射</span>
+            <div class="runtime-list">
+              <div class="runtime-item">
+                <span class="runtime-path">Source URL</span>
+                <span class="runtime-note">{{ inventory.sourceUrl || '尚未测试 inventory 接口' }}</span>
               </div>
-              <p class="section-description">
-                这里显示当前 agent 保存下来的函数映射摘要；详细参数编辑仍回到角色配置页完成。
-              </p>
-              <div v-if="functionMappings.length" class="mapping-grid">
-                <div v-for="item in functionMappings" :key="item.pluginId" class="mapping-card">
-                  <div class="mapping-header">
-                    <span class="mapping-name">{{ item.pluginId }}</span>
-                    <span class="mapping-count">{{ item.paramCount }} 个参数</span>
-                  </div>
-                  <pre class="mapping-body">{{ formatParamInfo(item.paramInfo) }}</pre>
-                </div>
+              <div class="runtime-item">
+                <span class="runtime-path">绑定策略</span>
+                <span class="runtime-note">先绑定 Channel，再让智能体表单按 channel 下拉选择 runtime/account 和 OpenClaw agent。</span>
               </div>
-              <el-empty v-else description="当前 agent 还没有函数映射" :image-size="90" />
-            </el-card>
-
-            <el-card class="surface-card wide-card" shadow="never">
-              <div class="section-header">
-                <div>
-                  <div class="section-eyebrow">Runtime Notes</div>
-                  <h3>运行时说明</h3>
-                </div>
-              </div>
-              <p class="section-description">
-                这一版控制面只消费当前已稳定的 manager-api 数据。更高阶的 OpenClaw runtime/admin 状态仍等 Phase 2 契约校准后再收口。
-              </p>
-              <div class="runtime-list">
-                <div class="runtime-item">
-                  <span class="runtime-path">/openclaw/bridge/ws</span>
-                  <span class="runtime-note">桥接 WebSocket 路径已由 deploy 暴露，当前页面只做说明，不直接管理连接生命周期。</span>
-                </div>
-                <div class="runtime-item">
-                  <span class="runtime-path">/admin/openclaw/</span>
-                  <span class="runtime-note">运行时 admin 路径已存在，但还没有稳定沉淀到 manager-api 包装层。</span>
-                </div>
-                <div class="runtime-item">
-                  <span class="runtime-path">Phase 2 Dependency</span>
-                  <span class="runtime-note">bridge token、握手状态和 hotfix overlay 一致性仍需后续 phase 校准。</span>
-                </div>
-              </div>
-            </el-card>
-          </template>
+            </div>
+          </el-card>
         </div>
       </div>
     </div>
@@ -177,13 +246,34 @@ import Api from "@/apis/api";
 import HeaderBar from "@/components/HeaderBar.vue";
 import VersionFooter from "@/components/VersionFooter.vue";
 
-const createEmptySurface = () => ({
-  agentConfig: null,
-  agentConfigError: "",
-  mcpAccessAddress: "",
-  mcpAddressError: "",
-  mcpTools: [],
-  mcpToolsError: "",
+const createEmptyChannel = () => ({
+  id: "",
+  name: "",
+  baseUrl: "",
+  inventoryPath: "/inventory",
+  accessToken: "",
+  enabled: true,
+  remark: "",
+});
+
+const createEmptyInventory = () => ({
+  channelId: "",
+  sourceUrl: "",
+  healthy: false,
+  errorMessage: "",
+  runtimeAccounts: [],
+  agents: [],
+});
+
+const createEmptySetupGuide = () => ({
+  channelId: "",
+  channelName: "",
+  serverUrl: "",
+  baseUrl: "",
+  inventoryPath: "/inventory",
+  defaultAgentId: "main",
+  accessTokenConfigured: true,
+  installCommand: "",
 });
 
 export default {
@@ -195,60 +285,41 @@ export default {
   data() {
     return {
       loading: false,
+      saving: false,
+      guideLoading: false,
+      inventoryLoading: false,
       agentId: "",
-      refreshedAt: "",
-      surface: createEmptySurface(),
+      channels: [],
+      draft: createEmptyChannel(),
+      inventory: createEmptyInventory(),
+      setupGuide: createEmptySetupGuide(),
+      advancedPanels: [],
     };
   },
   computed: {
-    agentName() {
-      if (this.surface.agentConfig && this.surface.agentConfig.agentName) {
-        return this.surface.agentConfig.agentName;
+    inventoryStatusText() {
+      if (this.inventoryLoading) {
+        return "同步中";
       }
-      return "未命名智能体";
+      if (this.inventory.healthy) {
+        return "已就绪";
+      }
+      if (this.inventory.errorMessage) {
+        return "需检查";
+      }
+      return "未同步";
     },
-    functionMappings() {
-      const functions = this.surface.agentConfig && Array.isArray(this.surface.agentConfig.functions)
-        ? this.surface.agentConfig.functions
-        : [];
-      return functions.map((item) => {
-        const paramInfo = item && item.paramInfo ? item.paramInfo : {};
-        return {
-          pluginId: item && item.pluginId ? item.pluginId : "unknown-plugin",
-          paramInfo,
-          paramCount: Object.keys(paramInfo).length,
-        };
-      });
-    },
-    surfaceStatusText() {
-      if (this.loading) {
-        return "刷新中";
+    commandStatusText() {
+      if (this.guideLoading) {
+        return "生成中";
       }
-      if (this.surface.mcpAddressError || this.surface.mcpToolsError) {
-        return "部分异常";
+      if (this.setupGuide.installCommand) {
+        return "可复制";
       }
-      if (this.surface.mcpTools.length > 0) {
-        return "已连接";
+      if (this.draft.id) {
+        return "待生成";
       }
-      if (this.surface.mcpAccessAddress) {
-        return "已暴露";
-      }
-      return "未配置";
-    },
-    surfaceStatusTag() {
-      if (this.loading) {
-        return "warning";
-      }
-      if (this.surface.mcpAddressError || this.surface.mcpToolsError) {
-        return "danger";
-      }
-      if (this.surface.mcpTools.length > 0) {
-        return "success";
-      }
-      return "info";
-    },
-    refreshedAtText() {
-      return this.refreshedAt || "尚未刷新";
+      return "待保存";
     },
   },
   watch: {
@@ -256,114 +327,201 @@ export default {
       immediate: true,
       handler(agentId) {
         this.agentId = agentId || "";
-        if (!this.agentId) {
-          this.surface = this.getEmptySurface();
-          this.refreshedAt = "";
-          this.loading = false;
-          return;
-        }
-        this.loadSurface();
       },
     },
   },
+  created() {
+    this.loadChannels();
+  },
   methods: {
-    getEmptySurface() {
-      return createEmptySurface();
-    },
-    loadSurface() {
-      if (!this.agentId) {
-        return;
-      }
+    loadChannels() {
       this.loading = true;
-      Api.agent.getAgentOpenClawSurface(this.agentId, ({ data }) => {
-        if (data && data.code === 0) {
-          this.surface = this.normalizeSurface(data.data);
-          this.refreshedAt = this.formatNow();
-        } else {
-          this.surface = {
-            ...this.getEmptySurface(),
-            agentConfigError: (data && data.msg) || "加载 OpenClaw 控制面失败",
-          };
-        }
+      Api.openclaw.getChannels(({ data }) => {
         this.loading = false;
+        if (data.code === 0) {
+          this.channels = Array.isArray(data.data) ? data.data : [];
+          if (this.draft.id) {
+            const matched = this.channels.find((item) => item.id === this.draft.id);
+            if (matched) {
+              this.selectChannel(matched);
+              return;
+            }
+          }
+          if (!this.draft.id && !this.draft.name && this.channels.length) {
+            this.selectChannel(this.channels[0]);
+          }
+        } else {
+          this.$message.error(data.msg || "获取 OpenClaw channel 列表失败");
+        }
       });
     },
-    refreshSurface() {
-      this.loadSurface();
-    },
-    normalizeSurface(surface) {
-      return {
-        agentConfig: surface && surface.agentConfig ? surface.agentConfig : null,
-        agentConfigError: surface && surface.agentConfigError ? surface.agentConfigError : "",
-        mcpAccessAddress: surface && surface.mcpAccessAddress ? surface.mcpAccessAddress : "",
-        mcpAddressError: surface && surface.mcpAddressError ? surface.mcpAddressError : "",
-        mcpTools: surface && Array.isArray(surface.mcpTools) ? surface.mcpTools : [],
-        mcpToolsError: surface && surface.mcpToolsError ? surface.mcpToolsError : "",
+    selectChannel(channel) {
+      this.draft = {
+        id: channel.id || "",
+        name: channel.name || "",
+        baseUrl: channel.baseUrl || "",
+        inventoryPath: channel.inventoryPath || "/inventory",
+        accessToken: channel.accessToken || "",
+        enabled: channel.enabled !== false,
+        remark: channel.remark || "",
       };
+      this.refreshSetupGuide();
+      this.syncDraftInventory();
     },
-    formatNow() {
-      const now = new Date();
-      const pad = (value) => String(value).padStart(2, "0");
-      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    resetDraft() {
+      this.draft = createEmptyChannel();
+      this.inventory = createEmptyInventory();
+      this.setupGuide = createEmptySetupGuide();
+      this.advancedPanels = [];
     },
-    formatParamInfo(paramInfo) {
-      if (!paramInfo || Object.keys(paramInfo).length === 0) {
-        return "无参数配置";
-      }
-      try {
-        return JSON.stringify(paramInfo, null, 2);
-      } catch (error) {
-        console.error("格式化参数失败:", error);
-        return "参数配置解析失败";
-      }
-    },
-    copyMcpAddress() {
-      if (!this.surface.mcpAccessAddress) {
-        this.$message.warning("当前没有可复制的 MCP 地址");
+    refreshSetupGuide() {
+      if (!this.draft.id) {
+        this.setupGuide = createEmptySetupGuide();
         return;
       }
+      this.guideLoading = true;
+      Api.openclaw.getChannelSetupGuide(this.draft.id, ({ data }) => {
+        this.guideLoading = false;
+        if (data.code === 0) {
+          this.setupGuide = data.data || createEmptySetupGuide();
+        } else {
+          this.setupGuide = createEmptySetupGuide();
+          this.$message.error(data.msg || "生成安装命令失败");
+        }
+      }, ({ data }) => {
+        this.guideLoading = false;
+        this.setupGuide = createEmptySetupGuide();
+        this.$message.error((data && data.msg) || "生成安装命令失败");
+      });
+    },
+    saveChannels() {
+      if (!this.draft.name) {
+        this.$message.warning("请先填写 Channel 名称");
+        return;
+      }
+      const nextChannels = this.channels.filter((item) => item.id !== this.draft.id);
+      const channelToSave = {
+        ...this.draft,
+        id: this.draft.id || `channel-${Date.now()}`,
+      };
+      nextChannels.unshift(channelToSave);
+      this.saving = true;
+      Api.openclaw.saveChannels(nextChannels, ({ data }) => {
+        this.saving = false;
+        if (data.code === 0) {
+          this.channels = Array.isArray(data.data) ? data.data : [];
+          const saved = this.channels.find((item) => item.id === channelToSave.id) || this.channels[0];
+          if (saved) {
+            this.selectChannel(saved);
+          }
+          this.$message.success("OpenClaw channel 配置已保存");
+        } else {
+          this.$message.error(data.msg || "保存 OpenClaw channel 失败");
+        }
+      }, ({ data }) => {
+        this.saving = false;
+        this.$message.error((data && data.msg) || "保存 OpenClaw channel 失败");
+      });
+    },
+    removeDraftChannel() {
+      if (!this.draft.id) {
+        return;
+      }
+      const nextChannels = this.channels.filter((item) => item.id !== this.draft.id);
+      this.saving = true;
+      Api.openclaw.saveChannels(nextChannels, ({ data }) => {
+        this.saving = false;
+        if (data.code === 0) {
+          this.channels = Array.isArray(data.data) ? data.data : [];
+          this.resetDraft();
+          if (this.channels.length) {
+            this.selectChannel(this.channels[0]);
+          }
+          this.$message.success("OpenClaw channel 已删除");
+        } else {
+          this.$message.error(data.msg || "删除 OpenClaw channel 失败");
+        }
+      }, ({ data }) => {
+        this.saving = false;
+        this.$message.error((data && data.msg) || "删除 OpenClaw channel 失败");
+      });
+    },
+    syncDraftInventory() {
+      if (!this.draft.id) {
+        this.inventory = {
+          ...createEmptyInventory(),
+          errorMessage: "请先保存 Channel，再同步 inventory。",
+        };
+        return;
+      }
+      this.inventoryLoading = true;
+      Api.openclaw.getChannelInventory(this.draft.id, ({ data }) => {
+        this.inventoryLoading = false;
+        if (data.code === 0) {
+          this.inventory = data.data || createEmptyInventory();
+        } else {
+          this.inventory = {
+            ...createEmptyInventory(),
+            errorMessage: data.msg || "同步 OpenClaw inventory 失败",
+          };
+        }
+      }, ({ data }) => {
+        this.inventoryLoading = false;
+        this.inventory = {
+          ...createEmptyInventory(),
+          errorMessage: (data && data.msg) || "同步 OpenClaw inventory 失败",
+        };
+      });
+    },
+    copyInstallCommand() {
+      if (!this.setupGuide.installCommand) {
+        this.$message.warning("请先保存 Channel 并生成安装命令");
+        return;
+      }
+      this.copyText(this.setupGuide.installCommand);
+    },
+    copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+          this.$message.success("安装命令已复制");
+        }).catch(() => {
+          this.copyTextFallback(text);
+        });
+        return;
+      }
+      this.copyTextFallback(text);
+    },
+    copyTextFallback(text) {
       const textarea = document.createElement("textarea");
-      textarea.value = this.surface.mcpAccessAddress;
+      textarea.value = text;
       textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
       document.body.appendChild(textarea);
       textarea.select();
 
       try {
         const copied = document.execCommand("copy");
         if (copied) {
-          this.$message.success("MCP 地址已复制");
+          this.$message.success("安装命令已复制");
         } else {
           this.$message.error("复制失败，请手动复制");
         }
       } catch (error) {
-        console.error("复制 MCP 地址失败:", error);
         this.$message.error("复制失败，请手动复制");
+        console.error("复制安装命令失败:", error);
       } finally {
         document.body.removeChild(textarea);
       }
     },
     goToRoleConfig() {
-      if (!this.agentId) {
-        this.$message.warning("当前没有可跳转的智能体");
+      if (this.agentId) {
+        this.$router.push({
+          path: "/role-config",
+          query: { agentId: this.agentId },
+        });
         return;
       }
-      this.$router.push({
-        path: "/role-config",
-        query: { agentId: this.agentId },
-      });
-    },
-    goToFunctionConfig() {
-      if (!this.agentId) {
-        this.$message.warning("当前没有可跳转的智能体");
-        return;
-      }
-      this.$router.push({
-        path: "/role-config",
-        query: {
-          agentId: this.agentId,
-          openFunctions: "1",
-        },
-      });
+      this.$router.push("/role-config");
     },
   },
 };
@@ -372,22 +530,18 @@ export default {
 <style scoped>
 .welcome {
   min-width: 900px;
+  min-height: 506px;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(circle at top left, rgba(92, 136, 255, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(23, 128, 93, 0.14), transparent 28%),
-    linear-gradient(145deg, #eef5ff, #f7fbff 52%, #edf7f3);
-  overflow: hidden;
+  background: linear-gradient(145deg, #eef2ff, #f8fbff);
 }
 
 .operation-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20px;
-  padding: 18px 24px;
+  padding: 24px 28px 12px;
 }
 
 .title-block {
@@ -399,294 +553,377 @@ export default {
 .page-title {
   margin: 0;
   font-size: 28px;
-  color: #21304d;
+  color: #24304a;
 }
 
 .page-subtitle {
   margin: 0;
-  font-size: 13px;
-  color: #61708e;
+  font-size: 14px;
+  color: #7f8aa3;
 }
 
 .page-actions {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.ghost-btn {
-  border-radius: 18px;
-  border: 1px solid #bfd0f2;
-  background: rgba(255, 255, 255, 0.8);
-  color: #35507a;
-}
-
+.ghost-btn,
 .refresh-btn {
-  border-radius: 18px;
+  border-radius: 999px;
 }
 
 .main-wrapper {
-  height: calc(100vh - 63px - 35px - 60px);
-  margin: 0 22px;
-  border-radius: 18px;
-  box-shadow: 0 18px 40px rgba(37, 76, 141, 0.08);
-  background: rgba(255, 255, 255, 0.58);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.content-panel {
   flex: 1;
-  display: flex;
-  border: 1px solid rgba(255, 255, 255, 0.88);
-  border-radius: 18px;
-  overflow: hidden;
+  padding: 0 28px 28px;
 }
 
+.content-panel,
 .content-area {
-  flex: 1;
-  overflow: auto;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 250, 255, 0.96));
-  padding: 22px;
+  height: 100%;
 }
 
-.top-alert {
-  margin-bottom: 18px;
+.hero-card,
+.surface-card {
+  border-radius: 24px;
+  border: none;
 }
 
 .hero-card {
   display: flex;
   justify-content: space-between;
-  gap: 18px;
-  padding: 22px 24px;
-  border-radius: 22px;
-  background:
-    linear-gradient(135deg, rgba(34, 62, 118, 0.96), rgba(62, 107, 196, 0.92)),
-    linear-gradient(145deg, #21304d, #4f78d1);
+  gap: 20px;
+  padding: 28px;
+  background: linear-gradient(120deg, #22304f, #385a9a);
   color: #fff;
-  box-shadow: 0 18px 36px rgba(44, 77, 145, 0.24);
-  margin-bottom: 18px;
-}
-
-.hero-main {
-  max-width: 58%;
 }
 
 .hero-label {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .hero-title {
-  margin: 16px 0 10px;
-  font-size: 30px;
-  line-height: 1.1;
+  margin: 10px 0 8px;
+  font-size: 28px;
 }
 
 .hero-description {
+  max-width: 680px;
   margin: 0;
-  line-height: 1.7;
   color: rgba(255, 255, 255, 0.82);
+  line-height: 1.7;
 }
 
 .hero-meta {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  min-width: 260px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-content: flex-start;
+  justify-content: flex-end;
 }
 
 .meta-pill {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.1);
+  min-width: 150px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
 }
 
 .meta-key {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.62);
+  display: block;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.64);
 }
 
 .meta-value {
-  font-size: 14px;
-  word-break: break-all;
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .surface-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
+  grid-template-columns: minmax(280px, 0.88fr) minmax(420px, 1.12fr);
+  gap: 18px;
+  margin-top: 20px;
 }
 
 .surface-card {
-  border: 1px solid #e6eefc;
-  border-radius: 20px;
-  box-shadow: none;
+  padding: 8px;
 }
 
 .wide-card {
-  margin-bottom: 16px;
+  margin-top: 20px;
 }
 
 .section-header {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  align-items: flex-start;
+  gap: 16px;
 }
 
 .section-eyebrow {
-  font-size: 11px;
-  color: #5e77a4;
-  letter-spacing: 0.08em;
+  font-size: 12px;
   text-transform: uppercase;
-  margin-bottom: 6px;
+  letter-spacing: 0.14em;
+  color: #8d97ab;
 }
 
 .section-header h3 {
-  margin: 0;
-  font-size: 20px;
-  color: #21304d;
+  margin: 8px 0 0;
+  font-size: 22px;
+  color: #24304a;
 }
 
 .section-description {
-  margin: 0 0 14px;
-  color: #6b7690;
+  margin: 16px 0 0;
+  color: #69758d;
   line-height: 1.7;
 }
 
-.inline-actions {
+.tool-count {
+  color: #5d6882;
+  font-weight: 600;
+}
+
+.channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.channel-item {
+  padding: 14px 16px;
+  border: 1px solid #e4eaf8;
+  border-radius: 16px;
+  background: #f8faff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.channel-item.active {
+  border-color: #5778ff;
+  background: #eef2ff;
+}
+
+.channel-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.channel-name {
+  font-weight: 600;
+  color: #24304a;
+}
+
+.channel-url {
+  display: block;
+  margin-top: 8px;
+  color: #7a86a0;
+  word-break: break-all;
+}
+
+.step-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.step-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #f8faff;
+  color: #44506a;
+}
+
+.step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #223d7a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.channel-form {
   margin-top: 14px;
 }
 
-.tool-count {
-  color: #5e77a4;
-  font-size: 13px;
+.channel-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  color: #44506a;
 }
 
-.tool-grid {
+.channel-actions,
+.inline-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.channel-actions {
+  margin-top: 18px;
+}
+
+.command-panel {
+  margin-top: 20px;
+  padding: 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #f7f9ff, #eef3ff);
+}
+
+.command-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.command-title {
+  margin: 8px 0 0;
+  font-size: 18px;
+  color: #24304a;
+}
+
+.command-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.meta-line {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.meta-line-key {
+  display: block;
+  font-size: 12px;
+  color: #6f7b95;
+}
+
+.meta-line-value {
+  display: block;
+  margin-top: 6px;
+  color: #23304d;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.command-textarea {
+  margin-top: 16px;
+}
+
+.command-hint {
+  margin-top: 12px;
+  color: #68758e;
+  line-height: 1.7;
+}
+
+.advanced-panel {
+  margin-top: 18px;
+}
+
+.advanced-form {
+  margin-top: 0;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.inventory-block {
+  padding: 18px;
+  border-radius: 18px;
+  background: #f8faff;
+}
+
+.inventory-title {
+  margin-bottom: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #24304a;
+}
+
+.inventory-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.tool-chip {
+.inventory-chip {
   padding: 8px 12px;
   border-radius: 999px;
-  background: #eef3ff;
-  color: #35507a;
-  border: 1px solid #d8e3fb;
-  font-size: 13px;
-}
-
-.mapping-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.mapping-card {
-  border: 1px solid #e6eefc;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fcfdff, #f4f8ff);
-  padding: 14px;
-}
-
-.mapping-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.mapping-name {
-  font-weight: 600;
-  color: #21304d;
-  word-break: break-all;
-}
-
-.mapping-count {
-  color: #61708e;
-  font-size: 12px;
-}
-
-.mapping-body {
-  margin: 0;
-  padding: 12px;
-  border-radius: 12px;
-  background: #1f2740;
-  color: #d8e7ff;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  min-height: 96px;
+  background: #e9efff;
+  color: #3656a3;
 }
 
 .runtime-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 18px;
 }
 
 .runtime-item {
-  display: grid;
-  grid-template-columns: 180px 1fr;
-  gap: 12px;
-  align-items: flex-start;
+  display: flex;
+  gap: 14px;
   padding: 12px 14px;
-  border-radius: 14px;
-  background: #f7fbff;
-  border: 1px solid #e2ecfb;
+  border-radius: 16px;
+  background: #f8faff;
 }
 
 .runtime-path {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  color: #1d4067;
-  font-size: 13px;
+  min-width: 120px;
+  font-weight: 600;
+  color: #24304a;
 }
 
 .runtime-note {
-  color: #66748f;
-  line-height: 1.6;
+  color: #68758e;
+  word-break: break-word;
 }
 
-.error-text {
-  margin: 10px 0 0;
-  color: #d3485a;
-  font-size: 13px;
+.top-alert {
+  margin-top: 16px;
 }
 
 @media (max-width: 1200px) {
+  .surface-grid,
+  .inventory-grid,
+  .command-meta {
+    grid-template-columns: 1fr;
+  }
+
   .hero-card {
     flex-direction: column;
   }
 
-  .hero-main {
-    max-width: 100%;
-  }
-
-  .surface-grid,
-  .mapping-grid {
-    grid-template-columns: 1fr;
+  .hero-meta {
+    justify-content: flex-start;
   }
 }
 </style>

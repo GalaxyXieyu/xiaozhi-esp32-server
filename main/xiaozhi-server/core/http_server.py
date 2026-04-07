@@ -1,6 +1,7 @@
 import asyncio
 from aiohttp import web
 from config.logger import setup_logging
+from core.api.openclaw_admin_handler import OpenClawAdminHandler
 from core.api.ota_handler import OTAHandler
 from core.api.vision_handler import VisionHandler
 
@@ -8,11 +9,30 @@ TAG = __name__
 
 
 class SimpleHttpServer:
-    def __init__(self, config: dict):
+    def __init__(
+        self,
+        config: dict,
+        openclaw_hub=None,
+        connection_registry=None,
+        websocket_server=None,
+    ):
         self.config = config
+        self.openclaw_hub = openclaw_hub
+        self.connection_registry = connection_registry
+        self.websocket_server = websocket_server
         self.logger = setup_logging()
         self.ota_handler = OTAHandler(config)
         self.vision_handler = VisionHandler(config)
+        self.openclaw_admin_handler = (
+            OpenClawAdminHandler(
+                config,
+                openclaw_hub=openclaw_hub,
+                connection_registry=connection_registry,
+                websocket_server=websocket_server,
+            )
+            if openclaw_hub or connection_registry or websocket_server
+            else None
+        )
 
     def _get_websocket_url(self, local_ip: str, port: int) -> str:
         """获取websocket地址
@@ -74,6 +94,99 @@ class SimpleHttpServer:
                         ),
                     ]
                 )
+                if self.openclaw_admin_handler:
+                    app.add_routes(
+                        [
+                            web.get(
+                                "/admin/openclaw/voice-interrupt",
+                                self.openclaw_admin_handler.get_voice_interrupt,
+                            ),
+                            web.post(
+                                "/admin/openclaw/voice-interrupt",
+                                self.openclaw_admin_handler.set_voice_interrupt,
+                            ),
+                            web.get(
+                                "/admin/openclaw/inventory",
+                                self.openclaw_admin_handler.get_inventory,
+                            ),
+                            web.options(
+                                "/admin/openclaw/voice-interrupt",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/inventory",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                        ]
+                    )
+                if self.openclaw_hub and self.openclaw_hub.enabled:
+                    bridge_ws_path = (
+                        self.config.get("openclaw_hub", {}) or {}
+                    ).get("bridge_ws_path", "/openclaw/bridge/ws")
+                    app.add_routes(
+                        [
+                            web.get(
+                                bridge_ws_path,
+                                self.openclaw_hub.handle_websocket,
+                            ),
+                            web.post(
+                                "/admin/openclaw/issue-bridge-token",
+                                self.openclaw_admin_handler.issue_bridge_token,
+                            ),
+                            web.post(
+                                "/admin/openclaw/revoke-bridge-token",
+                                self.openclaw_admin_handler.revoke_bridge_token,
+                            ),
+                            web.get(
+                                "/admin/openclaw/bridges",
+                                self.openclaw_admin_handler.list_bridges,
+                            ),
+                            web.get(
+                                "/admin/openclaw/connections",
+                                self.openclaw_admin_handler.list_connections,
+                            ),
+                            web.post(
+                                "/admin/openclaw/push-text",
+                                self.openclaw_admin_handler.push_text,
+                            ),
+                            web.post(
+                                "/admin/openclaw/chat",
+                                self.openclaw_admin_handler.chat,
+                            ),
+                            web.post(
+                                "/admin/openclaw/clear-session",
+                                self.openclaw_admin_handler.clear_session,
+                            ),
+                            web.options(
+                                "/admin/openclaw/issue-bridge-token",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/revoke-bridge-token",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/bridges",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/connections",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/push-text",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/chat",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/clear-session",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                        ]
+                    )
 
                 # 运行服务
                 runner = web.AppRunner(app)

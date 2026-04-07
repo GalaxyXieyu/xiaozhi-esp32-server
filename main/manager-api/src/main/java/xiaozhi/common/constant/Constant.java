@@ -142,6 +142,16 @@ public interface Constant {
     String SERVER_MQTT_SECRET = "server.mqtt_signature_key";
 
     /**
+     * OpenClaw channel 配置
+     */
+    String SERVER_OPENCLAW_CHANNELS = "server.openclaw_channels";
+
+    /**
+     * 智能体 OpenClaw 扩展配置
+     */
+    String SERVER_OPENCLAW_AGENT_BINDINGS = "server.openclaw_agent_bindings";
+
+    /**
      * WebSocket认证开关
      */
     String SERVER_AUTH_ENABLED = "server.auth.enabled";

@@ -4,6 +4,7 @@ import agent from './module/agent.js'
 import device from './module/device.js'
 import dict from './module/dict.js'
 import model from './module/model.js'
+import openclaw from './module/openclaw.js'
 import ota from './module/ota.js'
 import timbre from "./module/timbre.js"
 import user from './module/user.js'
@@ -36,6 +37,7 @@ export default {
     agent,
     device,
     model,
+    openclaw,
     timbre,
     ota,
     dict,

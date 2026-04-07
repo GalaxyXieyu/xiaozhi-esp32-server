@@ -40,8 +40,9 @@ jobs:
 
       - name: Set image tag
         run: |
-          echo "IMAGE_TAG=ghcr.io/${{ github.repository }}:web-${GITHUB_SHA}" >> "$GITHUB_ENV"
-          echo "IMAGE_LATEST=ghcr.io/${{ github.repository }}:web-latest" >> "$GITHUB_ENV"
+          IMAGE_REPO="$(printf '%s' 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE_TAG=${IMAGE_REPO}:web-${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_LATEST=${IMAGE_REPO}:web-latest" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

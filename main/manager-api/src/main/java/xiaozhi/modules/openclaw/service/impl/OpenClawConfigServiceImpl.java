@@ -379,9 +379,15 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private void persistParam(String paramCode, String paramValue, String valueType, String remark) {
+        int updated = sysParamsService.updateValueByCode(paramCode, paramValue);
+        if (updated > 0) {
+            return;
+        }
+
         SysParamsEntity entity = sysParamsDao.selectOne(
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysParamsEntity>()
                         .eq("param_code", paramCode)
+                        .orderByDesc("update_date", "id")
                         .last("limit 1")
         );
         if (entity == null) {

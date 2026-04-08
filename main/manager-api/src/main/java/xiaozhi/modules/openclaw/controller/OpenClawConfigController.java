@@ -22,6 +22,8 @@ import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
@@ -79,6 +81,18 @@ public class OpenClawConfigController {
             return new Result<OpenClawDebugChatResponseDTO>().ok(openClawConfigService.directChat(channelId, request));
         } catch (Exception e) {
             return new Result<OpenClawDebugChatResponseDTO>().error("OpenClaw 在线调试失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/channels/{channelId}/clear-session")
+    @Operation(summary = "清理 OpenClaw 调试会话")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawClearSessionResponseDTO> clearSession(@PathVariable String channelId,
+                                                                @RequestBody OpenClawClearSessionRequestDTO request) {
+        try {
+            return new Result<OpenClawClearSessionResponseDTO>().ok(openClawConfigService.clearSession(channelId, request));
+        } catch (Exception e) {
+            return new Result<OpenClawClearSessionResponseDTO>().error("清理 OpenClaw 会话失败: " + e.getMessage());
         }
     }
 

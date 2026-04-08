@@ -338,6 +338,16 @@
               </div>
               <div class="inline-actions">
                 <el-button size="small" @click="clearDebugTranscript">清空记录</el-button>
+                <el-button
+                  size="small"
+                  type="warning"
+                  plain
+                  :disabled="!debugForm.account || !debugForm.debugSessionId"
+                  :loading="debugClearing"
+                  @click="clearDebugSession"
+                >
+                  清空会话
+                </el-button>
                 <el-button size="small" type="primary" plain @click="createDebugSession">新建会话</el-button>
               </div>
             </div>
@@ -474,6 +484,7 @@ export default {
       debugForm: createEmptyDebugForm(),
       debugMessages: [],
       debugSending: false,
+      debugClearing: false,
       routePrefill: createEmptyRoutePrefill(),
       routePrefillApplied: false,
       advancedPanels: [],
@@ -796,6 +807,12 @@ export default {
       this.debugMessages = [];
       this.$message.success("已创建新的 OpenClaw 调试会话");
     },
+    rotateDebugSession(preserveTranscript = false) {
+      this.debugForm.debugSessionId = createDebugSessionId();
+      if (!preserveTranscript) {
+        this.debugMessages = [];
+      }
+    },
     clearDebugTranscript() {
       this.debugMessages = [];
     },
@@ -806,6 +823,43 @@ export default {
         text,
         meta: extra.meta || "",
       });
+    },
+    clearDebugSession() {
+      if (!this.draft.id || !this.debugForm.account || !this.debugForm.debugSessionId) {
+        this.$message.warning("当前没有可清理的 OpenClaw 调试会话");
+        return;
+      }
+      this.$confirm("清空当前 OpenClaw 调试会话后，将移除本次会话上下文并开始新的会话。是否继续？", "提示", {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning",
+      }).then(() => {
+        this.debugClearing = true;
+        const payload = {
+          account: this.debugForm.account,
+          bridgeId: this.debugForm.bridgeId,
+          sessionId: this.debugForm.debugSessionId,
+          allowLatest: false,
+        };
+        Api.openclaw.clearSession(this.draft.id, payload, ({ data }) => {
+          this.debugClearing = false;
+          if (data.code === 0) {
+            const clearedSessionId = this.debugForm.debugSessionId;
+            this.appendDebugMessage("system", `已清空 OpenClaw 调试会话：${clearedSessionId}`);
+            this.rotateDebugSession(true);
+            this.$message.success("OpenClaw 调试会话已清空");
+            return;
+          }
+          const errorMessage = data.msg || "清空 OpenClaw 调试会话失败";
+          this.appendDebugMessage("system", errorMessage);
+          this.$message.error(errorMessage);
+        }, ({ data }) => {
+          this.debugClearing = false;
+          const errorMessage = (data && data.msg) || "清空 OpenClaw 调试会话失败";
+          this.appendDebugMessage("system", errorMessage);
+          this.$message.error(errorMessage);
+        });
+      }).catch(() => {});
     },
     sendDirectChat() {
       if (!this.canSendDirectChat) {

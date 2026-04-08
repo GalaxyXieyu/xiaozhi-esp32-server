@@ -28,6 +28,8 @@ import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.BridgeItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.OptionItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
@@ -214,6 +216,45 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         response.setAgentId(StringUtils.defaultIfBlank(firstString(result, new String[]{"agentId"}), request.getAgentId()));
         response.setAgentName(StringUtils.defaultIfBlank(firstString(result, new String[]{"agentName"}), request.getAgentName()));
         response.setReplyText(extractReplyText(result, rawResult));
+        response.setRawResult(result);
+        return response;
+    }
+
+    @Override
+    public OpenClawClearSessionResponseDTO clearSession(String channelId, OpenClawClearSessionRequestDTO request) {
+        OpenClawChannelDTO channel = loadChannels().stream()
+                .filter(item -> StringUtils.equals(item.getId(), channelId))
+                .findFirst()
+                .orElse(null);
+        if (channel == null) {
+            throw new IllegalStateException("未找到对应的 OpenClaw channel");
+        }
+        if (Boolean.FALSE.equals(channel.getEnabled())) {
+            throw new IllegalStateException("当前 OpenClaw channel 已禁用");
+        }
+
+        String sourceUrl = buildChannelApiUrl(channel, "/clear-session");
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("account", StringUtils.trimToEmpty(request.getAccount()));
+        requestBody.put("bridgeId", StringUtils.trimToEmpty(request.getBridgeId()));
+        requestBody.put("sessionId", StringUtils.trimToEmpty(request.getSessionId()));
+        requestBody.put("deviceId", StringUtils.trimToEmpty(request.getDeviceId()));
+        requestBody.put("peerId", StringUtils.trimToEmpty(request.getPeerId()));
+        requestBody.put("allowLatest", Boolean.TRUE.equals(request.getAllowLatest()));
+
+        Map<String, Object> payload = requestChannelApi(channel, "/clear-session", HttpMethod.POST, requestBody);
+        Map<String, Object> root = unwrapData(payload);
+        Object rawResult = root.get("result");
+        Map<String, Object> result = rawResult instanceof Map<?, ?> map ? castMap(map) : new LinkedHashMap<>();
+
+        OpenClawClearSessionResponseDTO response = new OpenClawClearSessionResponseDTO();
+        response.setChannelId(channelId);
+        response.setSourceUrl(sourceUrl);
+        response.setAccount(StringUtils.defaultIfBlank(firstString(result, new String[]{"account"}), request.getAccount()));
+        response.setBridgeId(StringUtils.defaultIfBlank(firstString(root, new String[]{"bridgeId"}), request.getBridgeId()));
+        response.setSessionId(StringUtils.defaultIfBlank(firstString(result, new String[]{"sessionId"}), request.getSessionId()));
+        response.setDeviceId(StringUtils.defaultIfBlank(firstString(result, new String[]{"deviceId"}), request.getDeviceId()));
+        response.setPeerId(StringUtils.defaultIfBlank(firstString(result, new String[]{"peerId"}), request.getPeerId()));
         response.setRawResult(result);
         return response;
     }

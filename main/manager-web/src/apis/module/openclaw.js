@@ -98,6 +98,27 @@ export default {
                 });
             }).send();
     },
+    clearSession(channelId, data, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/clear-session`)
+            .method('POST')
+            .data(data)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.clearSession(channelId, data, callback, failCallback);
+                });
+            }).send();
+    },
     getAgentBinding(agentId, callback, failCallback) {
         RequestService.sendRequest()
             .url(`${getServiceUrl()}/openclaw-config/agents/${agentId}`)

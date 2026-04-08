@@ -176,6 +176,15 @@
                           </el-button>
                           <el-button
                             size="small"
+                            type="warning"
+                            plain
+                            :disabled="!openclawBinding.channelId && !openclawBinding.runtimeAccount && !openclawBinding.openclawAgentId"
+                            @click="clearOpenClawBinding"
+                          >
+                            清空当前绑定
+                          </el-button>
+                          <el-button
+                            size="small"
                             :loading="openclawInventoryLoading"
                             :disabled="!openclawBinding.channelId"
                             @click="loadOpenClawInventory(openclawBinding.channelId)"
@@ -988,6 +997,23 @@ export default {
         value,
         this.openclawBinding.openclawAgentName || value
       );
+    },
+    clearOpenClawBinding() {
+      this.$confirm("清空当前 OpenClaw 绑定后，需要重新选择 Channel、runtime/account 和 Agent。该操作不会立即保存，点击保存配置后才会生效。是否继续？", "提示", {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning",
+      }).then(() => {
+        this.openclawBinding.channelId = "";
+        this.openclawBinding.runtimeAccount = "";
+        this.openclawBinding.runtimeAccountLabel = "";
+        this.openclawBinding.openclawAgentId = "";
+        this.openclawBinding.openclawAgentName = "";
+        this.openclawBinding.syncStatus = "configured";
+        this.openclawBinding.errorMessage = "";
+        this.openclawInventory = createEmptyOpenClawInventory();
+        this.$message.success("当前 OpenClaw 绑定已清空，点击保存配置后生效");
+      }).catch(() => {});
     },
     appendCurrentBindingOption(options, currentValue, currentLabel) {
       const list = Array.isArray(options) ? options.slice() : [];

@@ -6,6 +6,8 @@ import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
 
@@ -19,6 +21,8 @@ public interface OpenClawConfigService {
     OpenClawChannelSetupGuideDTO getChannelSetupGuide(String channelId, String channelName, String serverOrigin);
 
     OpenClawDebugChatResponseDTO directChat(String channelId, OpenClawDebugChatRequestDTO request);
+
+    OpenClawClearSessionResponseDTO clearSession(String channelId, OpenClawClearSessionRequestDTO request);
 
     OpenClawAgentBindingDTO getAgentBinding(String agentId);
 

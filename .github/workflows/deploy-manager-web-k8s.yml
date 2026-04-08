@@ -11,8 +11,11 @@ on:
     branches:
       - main
     paths:
+      - 'main/manager-api/**'
       - 'main/manager-web/**'
       - 'Dockerfile-web'
+      - 'docs/docker/start.sh'
+      - 'docs/docker/nginx.conf'
       - '.github/workflows/deploy-manager-web-k8s.yml'
 
 concurrency:
@@ -81,6 +84,24 @@ jobs:
         run: |
           kubectl config current-context
           kubectl -n "$K8S_NAMESPACE" set image deployment/"$K8S_DEPLOYMENT" "$K8S_CONTAINER"="$IMAGE_TAG"
+          kubectl -n "$K8S_NAMESPACE" patch deployment/"$K8S_DEPLOYMENT" --type=strategic -p "$(cat <<EOF
+          {
+            \"spec\": {
+              \"template\": {
+                \"spec\": {
+                  \"containers\": [
+                    {
+                      \"name\": \"${K8S_CONTAINER}\",
+                      \"command\": [\"/start.sh\"],
+                      \"args\": []
+                    }
+                  ]
+                }
+              }
+            }
+          }
+          EOF
+          )"
           kubectl -n "$K8S_NAMESPACE" rollout status deployment/"$K8S_DEPLOYMENT" --timeout=300s
           kubectl -n "$K8S_NAMESPACE" get deployment/"$K8S_DEPLOYMENT" -o wide
 
@@ -92,3 +113,4 @@ jobs:
           echo "- Image: ${{ env.IMAGE_TAG }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Namespace: ${{ env.K8S_NAMESPACE }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Deployment: ${{ env.K8S_DEPLOYMENT }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Startup: force /start.sh (disable PVC hotfix override)" >> "$GITHUB_STEP_SUMMARY"

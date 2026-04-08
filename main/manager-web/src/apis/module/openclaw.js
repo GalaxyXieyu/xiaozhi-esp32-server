@@ -77,6 +77,27 @@ export default {
                 });
             }).send();
     },
+    directChat(channelId, data, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/direct-chat`)
+            .method('POST')
+            .data(data)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.directChat(channelId, data, callback, failCallback);
+                });
+            }).send();
+    },
     getAgentBinding(agentId, callback, failCallback) {
         RequestService.sendRequest()
             .url(`${getServiceUrl()}/openclaw-config/agents/${agentId}`)

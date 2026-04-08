@@ -640,9 +640,25 @@ export default {
         this.$message.warning("当前智能体未加载，无法进入 OpenClaw 管理页");
         return;
       }
+      const query = { agentId };
+      if (this.isOpenClawAgent) {
+        if (this.openclawBinding.channelId) {
+          query.channelId = this.openclawBinding.channelId;
+        }
+        if (this.openclawBinding.runtimeAccount) {
+          query.runtimeAccount = this.openclawBinding.runtimeAccount;
+        }
+        if (this.openclawBinding.openclawAgentId) {
+          query.openclawAgentId = this.openclawBinding.openclawAgentId;
+        }
+        if (this.openclawBinding.openclawAgentName) {
+          query.openclawAgentName = this.openclawBinding.openclawAgentName;
+        }
+        query.entry = "role-config";
+      }
       this.$router.push({
         path: "/openclaw-management",
-        query: { agentId },
+        query,
       });
     },
     async saveConfig() {

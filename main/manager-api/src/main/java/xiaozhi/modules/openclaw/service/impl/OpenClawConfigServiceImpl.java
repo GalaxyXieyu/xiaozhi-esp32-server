@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -24,8 +25,11 @@ import xiaozhi.common.utils.JsonUtils;
 import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.BridgeItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.OptionItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
 import xiaozhi.modules.sys.dao.SysParamsDao;
 import xiaozhi.modules.sys.entity.SysParamsEntity;
@@ -158,6 +162,11 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                     new String[]{"agents", "peerAgents", "agentInventory", "agentList", "peerAgentList"},
                     new String[]{"id", "agentId", "peerAgentId", "value", "key"},
                     new String[]{"label", "name", "agentName", "displayName", "title", "id"}));
+            inventory.setBridges(extractBridges(root));
+            inventory.setAccountAgents(extractAccountAgents(root));
+            inventory.setConnectedBridgeCount((int) inventory.getBridges().stream()
+                    .filter(item -> Boolean.TRUE.equals(item.getConnected()))
+                    .count());
             if (!Boolean.FALSE.equals(rootHealthy)) {
                 inventory.setHealthy(true);
             }
@@ -165,6 +174,48 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             inventory.setErrorMessage("拉取 OpenClaw inventory 失败: " + e.getMessage());
         }
         return inventory;
+    }
+
+    @Override
+    public OpenClawDebugChatResponseDTO directChat(String channelId, OpenClawDebugChatRequestDTO request) {
+        OpenClawChannelDTO channel = loadChannels().stream()
+                .filter(item -> StringUtils.equals(item.getId(), channelId))
+                .findFirst()
+                .orElse(null);
+        if (channel == null) {
+            throw new IllegalStateException("未找到对应的 OpenClaw channel");
+        }
+        if (Boolean.FALSE.equals(channel.getEnabled())) {
+            throw new IllegalStateException("当前 OpenClaw channel 已禁用");
+        }
+
+        String sourceUrl = buildChannelApiUrl(channel, "/direct-chat");
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("account", StringUtils.trimToEmpty(request.getAccount()));
+        requestBody.put("bridgeId", StringUtils.trimToEmpty(request.getBridgeId()));
+        requestBody.put("agentId", StringUtils.trimToEmpty(request.getAgentId()));
+        requestBody.put("agentName", StringUtils.trimToEmpty(request.getAgentName()));
+        requestBody.put("debugSessionId", StringUtils.trimToEmpty(request.getDebugSessionId()));
+        requestBody.put("speaker", StringUtils.trimToEmpty(request.getSpeaker()));
+        requestBody.put("text", StringUtils.trimToEmpty(request.getText()));
+
+        Map<String, Object> payload = requestChannelApi(channel, "/direct-chat", HttpMethod.POST, requestBody);
+        Map<String, Object> root = unwrapData(payload);
+        Object rawResult = root.get("result");
+        Map<String, Object> result = rawResult instanceof Map<?, ?> map ? castMap(map) : new LinkedHashMap<>();
+
+        OpenClawDebugChatResponseDTO response = new OpenClawDebugChatResponseDTO();
+        response.setChannelId(channelId);
+        response.setSourceUrl(sourceUrl);
+        response.setAccount(StringUtils.defaultIfBlank(firstString(root, new String[]{"account"}), request.getAccount()));
+        response.setBridgeId(StringUtils.defaultIfBlank(firstString(root, new String[]{"bridgeId"}), request.getBridgeId()));
+        response.setDebugSessionId(firstString(root, new String[]{"debugSessionId", "sessionId"}));
+        response.setPeerId(firstString(root, new String[]{"peerId"}));
+        response.setAgentId(StringUtils.defaultIfBlank(firstString(result, new String[]{"agentId"}), request.getAgentId()));
+        response.setAgentName(StringUtils.defaultIfBlank(firstString(result, new String[]{"agentName"}), request.getAgentName()));
+        response.setReplyText(extractReplyText(result, rawResult));
+        response.setRawResult(result);
+        return response;
     }
 
     @Override
@@ -311,6 +362,10 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return trimTrailingSlash(channel.getBaseUrl()) + normalizeInventoryPath(channel.getInventoryPath());
     }
 
+    private String buildChannelApiUrl(OpenClawChannelDTO channel, String path) {
+        return trimTrailingSlash(channel.getBaseUrl()) + normalizeInventoryPath(path);
+    }
+
     private String buildDefaultBaseUrl(String serverOrigin) {
         if (StringUtils.isBlank(serverOrigin)) {
             return "";
@@ -343,6 +398,41 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         }
         String trimmed = StringUtils.trim(path);
         return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
+    }
+
+    private HttpHeaders buildChannelHeaders(OpenClawChannelDTO channel) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (StringUtils.isNotBlank(channel.getAccessToken())) {
+            headers.setBearerAuth(channel.getAccessToken());
+            headers.add("X-OpenClaw-Token", channel.getAccessToken());
+        }
+        return headers;
+    }
+
+    private Map<String, Object> requestChannelApi(OpenClawChannelDTO channel, String path, HttpMethod method, Object body) {
+        String requestUrl = buildChannelApiUrl(channel, path);
+        HttpEntity<?> requestEntity = body == null
+                ? new HttpEntity<>(buildChannelHeaders(channel))
+                : new HttpEntity<>(body, buildChannelHeaders(channel));
+        ResponseEntity<String> response = restTemplate.exchange(requestUrl, method, requestEntity, String.class);
+        if (!response.getStatusCode().is2xxSuccessful() || StringUtils.isBlank(response.getBody())) {
+            throw new IllegalStateException("OpenClaw 接口未返回有效内容");
+        }
+
+        Map<String, Object> payload = JsonUtils.parseObject(response.getBody(), new TypeReference<Map<String, Object>>() {
+        });
+        if (payload == null) {
+            throw new IllegalStateException("OpenClaw 接口返回 JSON 为空");
+        }
+        Boolean payloadOk = firstBoolean(payload, new String[]{"ok"});
+        if (Boolean.FALSE.equals(payloadOk)) {
+            throw new IllegalStateException(StringUtils.defaultIfBlank(
+                    firstString(payload, new String[]{"message", "errorMessage", "msg"}),
+                    "OpenClaw 接口返回失败"
+            ));
+        }
+        return payload;
     }
 
     private String trimTrailingSlash(String value) {
@@ -395,6 +485,55 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             }
         }
         return options;
+    }
+
+    private List<BridgeItem> extractBridges(Map<String, Object> root) {
+        Object raw = findFirst(root, new String[]{"bridges", "bridgeList"});
+        if (!(raw instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+
+        List<BridgeItem> bridges = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Map<String, Object> bridge = castMap(map);
+            BridgeItem bridgeItem = new BridgeItem();
+            bridgeItem.setBridgeId(firstString(bridge, new String[]{"bridgeId", "id"}));
+            bridgeItem.setName(firstString(bridge, new String[]{"name", "label"}));
+            bridgeItem.setAccount(firstString(bridge, new String[]{"account", "accountId"}));
+            bridgeItem.setConnected(Boolean.TRUE.equals(firstBoolean(bridge, new String[]{"connected", "online"})));
+            bridgeItem.setIsDefault(Boolean.TRUE.equals(firstBoolean(bridge, new String[]{"isDefault", "default"})));
+            bridgeItem.setLastConnectedAt(firstString(bridge, new String[]{"lastConnectedAt"}));
+            bridgeItem.setLastDisconnectedAt(firstString(bridge, new String[]{"lastDisconnectedAt"}));
+            bridges.add(bridgeItem);
+        }
+        return bridges;
+    }
+
+    private Map<String, List<OptionItem>> extractAccountAgents(Map<String, Object> root) {
+        Object raw = findFirst(root, new String[]{"accountAgents", "agentsByAccount"});
+        if (!(raw instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+
+        Map<String, List<OptionItem>> accountAgents = new LinkedHashMap<>();
+        Map<String, Object> data = castMap(map);
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            if (StringUtils.isBlank(entry.getKey())) {
+                continue;
+            }
+            Map<String, Object> nested = new LinkedHashMap<>();
+            nested.put("items", entry.getValue());
+            accountAgents.put(entry.getKey(), extractOptions(
+                    nested,
+                    new String[]{"items"},
+                    new String[]{"id", "agentId", "peerAgentId", "value", "key"},
+                    new String[]{"label", "name", "agentName", "displayName", "title", "id"}
+            ));
+        }
+        return accountAgents;
     }
 
     private Object findFirst(Map<String, Object> root, String[] keys) {
@@ -462,6 +601,20 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             }
         }
         return null;
+    }
+
+    private String extractReplyText(Map<String, Object> result, Object rawResult) {
+        String replyText = firstString(result, new String[]{"text", "replyText", "reply", "message", "output"});
+        if (StringUtils.isNotBlank(replyText)) {
+            return replyText;
+        }
+        if (rawResult == null) {
+            return "";
+        }
+        if (rawResult instanceof Map<?, ?>) {
+            return JsonUtils.toJsonString(rawResult);
+        }
+        return String.valueOf(rawResult);
     }
 
     @SuppressWarnings("unchecked")

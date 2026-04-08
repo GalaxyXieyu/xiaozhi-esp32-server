@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +22,8 @@ import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
 import xiaozhi.modules.security.user.SecurityUser;
 
@@ -65,6 +68,18 @@ public class OpenClawConfigController {
                 resolveServerOrigin(request)
         );
         return new Result<OpenClawChannelSetupGuideDTO>().ok(guide);
+    }
+
+    @PostMapping("/channels/{channelId}/direct-chat")
+    @Operation(summary = "OpenClaw 在线调试对话")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawDebugChatResponseDTO> directChat(@PathVariable String channelId,
+                                                           @RequestBody OpenClawDebugChatRequestDTO request) {
+        try {
+            return new Result<OpenClawDebugChatResponseDTO>().ok(openClawConfigService.directChat(channelId, request));
+        } catch (Exception e) {
+            return new Result<OpenClawDebugChatResponseDTO>().error("OpenClaw 在线调试失败: " + e.getMessage());
+        }
     }
 
     @GetMapping("/agents/{agentId}")

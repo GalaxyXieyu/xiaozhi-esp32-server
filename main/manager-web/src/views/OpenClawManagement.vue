@@ -187,7 +187,10 @@
                 <div class="section-eyebrow">Inventory</div>
                 <h3>Channel 可选项</h3>
               </div>
-              <el-tag :type="inventory.healthy ? 'success' : 'warning'">{{ inventoryStatusText }}</el-tag>
+              <div class="inventory-tags">
+                <el-tag :type="inventory.healthy ? 'success' : 'warning'">{{ inventoryStatusText }}</el-tag>
+                <el-tag size="mini" :type="(inventory.connectedBridgeCount || 0) > 0 ? 'success' : 'info'">{{ bridgeStatusText }}</el-tag>
+              </div>
             </div>
             <p class="section-description">
               这里展示 channel 实际回传的 runtime/account 与 OpenClaw agent 列表。智能体绑定页会直接消费这些下拉项。
@@ -200,6 +203,20 @@
               show-icon
               class="top-alert"
             />
+            <div class="bridge-strip">
+              <div class="inventory-title">Bridge 状态</div>
+              <div v-if="inventory.bridges.length" class="bridge-grid">
+                <div v-for="item in inventory.bridges" :key="item.bridgeId" class="bridge-card">
+                  <div class="bridge-card-head">
+                    <span class="bridge-name">{{ item.name || item.bridgeId }}</span>
+                    <el-tag size="mini" :type="item.connected ? 'success' : 'info'">{{ item.connected ? '在线' : '离线' }}</el-tag>
+                  </div>
+                  <div class="bridge-meta-line">Account: {{ item.account || "-" }}</div>
+                  <div class="bridge-meta-line">Bridge ID: {{ item.bridgeId }}</div>
+                </div>
+              </div>
+              <el-empty v-else description="当前未发现 OpenClaw bridge" :image-size="72" />
+            </div>
             <div class="inventory-grid">
               <div class="inventory-block">
                 <div class="inventory-title">Runtime / Account</div>
@@ -228,6 +245,144 @@
               <div class="runtime-item">
                 <span class="runtime-path">绑定策略</span>
                 <span class="runtime-note">先绑定 Channel，再让智能体表单按 channel 下拉选择 runtime/account 和 OpenClaw agent。</span>
+              </div>
+            </div>
+          </el-card>
+
+          <el-card class="surface-card wide-card console-card" shadow="never">
+            <div class="section-header">
+              <div>
+                <div class="section-eyebrow">Online Console</div>
+                <h3>OpenClaw 在线调试台</h3>
+              </div>
+              <el-tag :type="canSendDirectChat ? 'success' : 'info'">{{ debugForm.debugSessionId }}</el-tag>
+            </div>
+            <p class="section-description">
+              这里直接走后台到 OpenClaw bridge 的 RPC，不依赖在线设备。适合线上快速验证 agent 选择、回复内容和 channel 路由。
+            </p>
+            <el-alert
+              v-if="!draft.id"
+              title="请先保存并选择一个 Channel，再开始在线调试。"
+              type="info"
+              :closable="false"
+              show-icon
+              class="top-alert"
+            />
+            <el-alert
+              v-else-if="!inventory.runtimeAccounts.length"
+              title="当前还没有可用的 runtime/account，请先执行安装命令并同步 inventory。"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="top-alert"
+            />
+            <div class="debug-toolbar">
+              <el-select
+                v-model="debugForm.account"
+                class="debug-select"
+                filterable
+                :disabled="!inventory.runtimeAccounts.length"
+                placeholder="选择 runtime/account"
+                @change="handleDebugAccountChange"
+              >
+                <el-option
+                  v-for="item in inventory.runtimeAccounts"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <el-select
+                v-model="debugForm.bridgeId"
+                class="debug-select"
+                clearable
+                filterable
+                :disabled="!bridgeOptions.length"
+                placeholder="指定 bridge（可选）"
+              >
+                <el-option
+                  v-for="item in bridgeOptions"
+                  :key="item.bridgeId"
+                  :label="`${item.name || item.bridgeId} · ${item.connected ? '在线' : '离线'}`"
+                  :value="item.bridgeId"
+                />
+              </el-select>
+              <el-select
+                v-model="debugForm.agentId"
+                class="debug-select"
+                filterable
+                :disabled="!currentDebugAgentOptions.length"
+                placeholder="选择 OpenClaw Agent"
+                @change="handleDebugAgentChange"
+              >
+                <el-option
+                  v-for="item in currentDebugAgentOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <el-input
+                v-model="debugForm.speaker"
+                class="debug-speaker-input"
+                maxlength="40"
+                placeholder="说话人标签，可选"
+              />
+            </div>
+
+            <div class="debug-session-bar">
+              <div class="debug-session-meta">
+                <span>会话：{{ debugForm.debugSessionId }}</span>
+                <span v-if="debugForm.account">Account：{{ debugForm.account }}</span>
+                <span v-if="debugForm.agentName || debugForm.agentId">Agent：{{ debugForm.agentName || debugForm.agentId }}</span>
+              </div>
+              <div class="inline-actions">
+                <el-button size="small" @click="clearDebugTranscript">清空记录</el-button>
+                <el-button size="small" type="primary" plain @click="createDebugSession">新建会话</el-button>
+              </div>
+            </div>
+
+            <div class="debug-chat-shell">
+              <div class="debug-transcript">
+                <div v-if="debugMessages.length" class="debug-message-list">
+                  <div
+                    v-for="item in debugMessages"
+                    :key="item.id"
+                    class="debug-message"
+                    :class="`role-${item.role}`"
+                  >
+                    <div class="debug-message-head">
+                      <span class="debug-role">
+                        {{
+                          item.role === "user"
+                            ? "后台输入"
+                            : item.role === "assistant"
+                              ? "OpenClaw 返回"
+                              : "系统信息"
+                        }}
+                      </span>
+                      <span v-if="item.meta" class="debug-meta">{{ item.meta }}</span>
+                    </div>
+                    <div class="debug-message-body">{{ item.text }}</div>
+                  </div>
+                </div>
+                <el-empty v-else description="发送一条消息，直接测试当前 OpenClaw agent。" :image-size="90" />
+              </div>
+              <div class="debug-composer">
+                <el-input
+                  v-model="debugForm.inputText"
+                  type="textarea"
+                  :rows="5"
+                  resize="none"
+                  placeholder="输入要发送给 OpenClaw 的测试消息，按 Ctrl + Enter 可快速发送。"
+                  @keyup.ctrl.enter.native="sendDirectChat"
+                />
+                <div class="debug-composer-actions">
+                  <span class="command-hint">发送的是纯后台调试消息，不会推给 ESP32 设备。</span>
+                  <el-button type="primary" :loading="debugSending" :disabled="!canSendDirectChat" @click="sendDirectChat">
+                    发送测试消息
+                  </el-button>
+                </div>
               </div>
             </div>
           </el-card>
@@ -263,6 +418,9 @@ const createEmptyInventory = () => ({
   errorMessage: "",
   runtimeAccounts: [],
   agents: [],
+  bridges: [],
+  accountAgents: {},
+  connectedBridgeCount: 0,
 });
 
 const createEmptySetupGuide = () => ({
@@ -274,6 +432,26 @@ const createEmptySetupGuide = () => ({
   defaultAgentId: "main",
   accessTokenConfigured: true,
   installCommand: "",
+});
+
+const createDebugSessionId = () => `web-debug-${Date.now()}`;
+
+const createEmptyDebugForm = () => ({
+  account: "",
+  bridgeId: "",
+  agentId: "",
+  agentName: "",
+  speaker: "后台调试",
+  inputText: "",
+  debugSessionId: createDebugSessionId(),
+});
+
+const createEmptyRoutePrefill = () => ({
+  channelId: "",
+  runtimeAccount: "",
+  openclawAgentId: "",
+  openclawAgentName: "",
+  entry: "",
 });
 
 export default {
@@ -293,6 +471,11 @@ export default {
       draft: createEmptyChannel(),
       inventory: createEmptyInventory(),
       setupGuide: createEmptySetupGuide(),
+      debugForm: createEmptyDebugForm(),
+      debugMessages: [],
+      debugSending: false,
+      routePrefill: createEmptyRoutePrefill(),
+      routePrefillApplied: false,
       advancedPanels: [],
     };
   },
@@ -321,12 +504,55 @@ export default {
       }
       return "待保存";
     },
+    bridgeStatusText() {
+      const connected = this.inventory.connectedBridgeCount || 0;
+      if (!this.draft.id) {
+        return "未选择";
+      }
+      if (!this.inventory.bridges.length) {
+        return "未接入";
+      }
+      return connected > 0 ? `${connected} 在线` : "全部离线";
+    },
+    bridgeOptions() {
+      const list = Array.isArray(this.inventory.bridges) ? this.inventory.bridges : [];
+      if (!this.debugForm.account) {
+        return list;
+      }
+      return list.filter((item) => item.account === this.debugForm.account);
+    },
+    currentDebugAgentOptions() {
+      const accountKey = this.debugForm.account;
+      const accountAgents = (this.inventory.accountAgents && this.inventory.accountAgents[accountKey]) || [];
+      if (Array.isArray(accountAgents) && accountAgents.length) {
+        return accountAgents;
+      }
+      return Array.isArray(this.inventory.agents) ? this.inventory.agents : [];
+    },
+    canSendDirectChat() {
+      return Boolean(
+        this.draft.id &&
+        this.debugForm.account &&
+        this.debugForm.agentId &&
+        this.debugForm.inputText &&
+        this.debugForm.inputText.trim()
+      );
+    },
   },
   watch: {
-    "$route.query.agentId": {
+    "$route.query": {
       immediate: true,
-      handler(agentId) {
-        this.agentId = agentId || "";
+      handler(query) {
+        const routeQuery = query || {};
+        this.agentId = routeQuery.agentId || "";
+        this.routePrefill = {
+          channelId: routeQuery.channelId || "",
+          runtimeAccount: routeQuery.runtimeAccount || "",
+          openclawAgentId: routeQuery.openclawAgentId || "",
+          openclawAgentName: routeQuery.openclawAgentName || "",
+          entry: routeQuery.entry || "",
+        };
+        this.routePrefillApplied = false;
       },
     },
   },
@@ -340,6 +566,13 @@ export default {
         this.loading = false;
         if (data.code === 0) {
           this.channels = Array.isArray(data.data) ? data.data : [];
+          if (this.routePrefill.channelId) {
+            const routedChannel = this.channels.find((item) => item.id === this.routePrefill.channelId);
+            if (routedChannel) {
+              this.selectChannel(routedChannel);
+              return;
+            }
+          }
           if (this.draft.id) {
             const matched = this.channels.find((item) => item.id === this.draft.id);
             if (matched) {
@@ -365,6 +598,8 @@ export default {
         enabled: channel.enabled !== false,
         remark: channel.remark || "",
       };
+      this.debugForm = createEmptyDebugForm();
+      this.debugMessages = [];
       this.refreshSetupGuide();
       this.syncDraftInventory();
     },
@@ -372,6 +607,8 @@ export default {
       this.draft = createEmptyChannel();
       this.inventory = createEmptyInventory();
       this.setupGuide = createEmptySetupGuide();
+      this.debugForm = createEmptyDebugForm();
+      this.debugMessages = [];
       this.advancedPanels = [];
     },
     refreshSetupGuide() {
@@ -459,6 +696,7 @@ export default {
         this.inventoryLoading = false;
         if (data.code === 0) {
           this.inventory = data.data || createEmptyInventory();
+          this.applyDebugDefaults();
         } else {
           this.inventory = {
             ...createEmptyInventory(),
@@ -471,6 +709,147 @@ export default {
           ...createEmptyInventory(),
           errorMessage: (data && data.msg) || "同步 OpenClaw inventory 失败",
         };
+      });
+    },
+    applyDebugDefaults() {
+      const runtimeAccounts = Array.isArray(this.inventory.runtimeAccounts) ? this.inventory.runtimeAccounts : [];
+      if (!runtimeAccounts.length) {
+        this.debugForm.account = "";
+        this.debugForm.bridgeId = "";
+        this.debugForm.agentId = "";
+        this.debugForm.agentName = "";
+        return;
+      }
+
+      if (!this.routePrefillApplied) {
+        const matchedAccount = runtimeAccounts.find((item) => item.value === this.routePrefill.runtimeAccount);
+        if (matchedAccount) {
+          this.debugForm.account = matchedAccount.value;
+        }
+      }
+
+      if (!runtimeAccounts.some((item) => item.value === this.debugForm.account)) {
+        this.debugForm.account = runtimeAccounts[0].value;
+      }
+
+      this.syncDebugBridge();
+      const currentAgents = this.currentDebugAgentOptions;
+      if (!this.routePrefillApplied) {
+        const matchedAgent = currentAgents.find((item) => item.value === this.routePrefill.openclawAgentId);
+        if (matchedAgent) {
+          this.debugForm.agentId = matchedAgent.value;
+          this.debugForm.agentName = matchedAgent.label;
+        }
+      }
+      if (!currentAgents.some((item) => item.value === this.debugForm.agentId)) {
+        const firstAgent = currentAgents[0];
+        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
+        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
+      } else {
+        this.debugForm.agentName = this.findOptionLabel(
+          currentAgents,
+          this.debugForm.agentId,
+          this.debugForm.agentName || this.debugForm.agentId
+        );
+      }
+
+      if (!this.routePrefillApplied) {
+        this.routePrefillApplied = true;
+      }
+    },
+    syncDebugBridge() {
+      const bridgeOptions = this.bridgeOptions;
+      if (!bridgeOptions.length) {
+        this.debugForm.bridgeId = "";
+        return;
+      }
+      const currentBridgeExists = bridgeOptions.some((item) => item.bridgeId === this.debugForm.bridgeId);
+      if (currentBridgeExists) {
+        return;
+      }
+      const preferredBridge = bridgeOptions.find((item) => item.connected) || bridgeOptions[0];
+      this.debugForm.bridgeId = preferredBridge ? preferredBridge.bridgeId : "";
+    },
+    handleDebugAccountChange(value) {
+      this.debugForm.account = value;
+      this.syncDebugBridge();
+      const agentOptions = this.currentDebugAgentOptions;
+      const matched = agentOptions.find((item) => item.value === this.debugForm.agentId);
+      if (!matched) {
+        const firstAgent = agentOptions[0];
+        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
+        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
+        return;
+      }
+      this.debugForm.agentName = matched.label;
+    },
+    handleDebugAgentChange(value) {
+      this.debugForm.agentId = value;
+      this.debugForm.agentName = this.findOptionLabel(
+        this.currentDebugAgentOptions,
+        value,
+        this.debugForm.agentName || value
+      );
+    },
+    createDebugSession() {
+      this.debugForm.debugSessionId = createDebugSessionId();
+      this.debugMessages = [];
+      this.$message.success("已创建新的 OpenClaw 调试会话");
+    },
+    clearDebugTranscript() {
+      this.debugMessages = [];
+    },
+    appendDebugMessage(role, text, extra = {}) {
+      this.debugMessages.push({
+        id: `${role}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        role,
+        text,
+        meta: extra.meta || "",
+      });
+    },
+    sendDirectChat() {
+      if (!this.canSendDirectChat) {
+        this.$message.warning("请先选择 runtime/account、OpenClaw Agent，并填写测试消息");
+        return;
+      }
+      const text = this.debugForm.inputText.trim();
+      const payload = {
+        account: this.debugForm.account,
+        bridgeId: this.debugForm.bridgeId,
+        agentId: this.debugForm.agentId,
+        agentName: this.debugForm.agentName,
+        debugSessionId: this.debugForm.debugSessionId,
+        speaker: this.debugForm.speaker,
+        text,
+      };
+
+      this.appendDebugMessage("user", text, {
+        meta: `${this.debugForm.account} / ${this.debugForm.agentName || this.debugForm.agentId}`,
+      });
+      this.debugSending = true;
+      this.debugForm.inputText = "";
+
+      Api.openclaw.directChat(this.draft.id, payload, ({ data }) => {
+        this.debugSending = false;
+        if (data.code === 0) {
+          const response = data.data || {};
+          if (response.debugSessionId) {
+            this.debugForm.debugSessionId = response.debugSessionId;
+          }
+          const replyText = response.replyText || "OpenClaw 已处理，但没有返回文本";
+          const metaParts = [response.account, response.agentName || response.agentId].filter(Boolean);
+          this.appendDebugMessage("assistant", replyText, {
+            meta: metaParts.join(" / "),
+          });
+          return;
+        }
+        this.appendDebugMessage("system", data.msg || "OpenClaw 在线调试失败");
+        this.$message.error(data.msg || "OpenClaw 在线调试失败");
+      }, ({ data }) => {
+        this.debugSending = false;
+        const errorMessage = (data && data.msg) || "OpenClaw 在线调试失败";
+        this.appendDebugMessage("system", errorMessage);
+        this.$message.error(errorMessage);
       });
     },
     copyInstallCommand() {
@@ -881,6 +1260,167 @@ export default {
   color: #3656a3;
 }
 
+.inventory-tags {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.bridge-strip {
+  margin-top: 18px;
+}
+
+.bridge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.bridge-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f6f9ff;
+  border: 1px solid #dde6fb;
+}
+
+.bridge-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.bridge-name {
+  font-weight: 600;
+  color: #24304a;
+}
+
+.bridge-meta-line {
+  font-size: 13px;
+  color: #6e7891;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.console-card {
+  margin-top: 24px;
+}
+
+.debug-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.debug-select,
+.debug-speaker-input {
+  width: 100%;
+}
+
+.debug-session-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8faff;
+}
+
+.debug-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: #55627c;
+  font-size: 13px;
+}
+
+.debug-chat-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.debug-transcript,
+.debug-composer {
+  min-height: 360px;
+  padding: 18px;
+  border-radius: 22px;
+  background: #f8faff;
+}
+
+.debug-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-message {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid #e6ecfa;
+}
+
+.debug-message.role-user {
+  background: #eef4ff;
+}
+
+.debug-message.role-assistant {
+  background: #ffffff;
+}
+
+.debug-message.role-system {
+  background: #fff7eb;
+  border-color: #f8dfb4;
+}
+
+.debug-message-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.debug-role {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #385a9a;
+}
+
+.debug-meta {
+  font-size: 12px;
+  color: #7c88a2;
+}
+
+.debug-message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  color: #25324d;
+}
+
+.debug-composer {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.debug-composer-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
 .runtime-list {
   display: flex;
   flex-direction: column;
@@ -914,7 +1454,9 @@ export default {
 @media (max-width: 1200px) {
   .surface-grid,
   .inventory-grid,
-  .command-meta {
+  .command-meta,
+  .debug-toolbar,
+  .debug-chat-shell {
     grid-template-columns: 1fr;
   }
 
@@ -924,6 +1466,12 @@ export default {
 
   .hero-meta {
     justify-content: flex-start;
+  }
+
+  .debug-session-bar,
+  .debug-composer-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

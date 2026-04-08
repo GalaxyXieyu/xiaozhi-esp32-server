@@ -1,3 +1,5 @@
+import uuid
+
 from aiohttp import web
 
 from core.api.base_handler import BaseHandler
@@ -119,6 +121,17 @@ class OpenClawAdminHandler(BaseHandler):
             seen.add(option["value"])
             normalized.append(option)
         return normalized
+
+    def _normalize_debug_key(self, value: str | None) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            raw = f"web-debug-{uuid.uuid4().hex[:12]}"
+        normalized = "".join(
+            ch if ch.isalnum() or ch in {"-", "_", ".", ":"} else "_"
+            for ch in raw
+        )
+        normalized = normalized.strip("._:-")
+        return normalized[:96] or f"web-debug-{uuid.uuid4().hex[:8]}"
 
     async def _require_auth(self, request: web.Request):
         if self._is_authorized(request):
@@ -530,6 +543,95 @@ class OpenClawAdminHandler(BaseHandler):
             response = web.json_response({"ok": True, "result": result})
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"管理员代发小智聊天失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def direct_chat(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {"ok": False, "message": "openclaw hub 未启用"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        text = (data.get("text") or "").strip()
+        if not text:
+            response = web.json_response(
+                {"ok": False, "message": "text 不能为空"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        account = (data.get("account") or "default").strip() or "default"
+        bridge_id = (data.get("bridgeId") or "").strip() or None
+        debug_session_id = self._normalize_debug_key(
+            data.get("debugSessionId") or data.get("sessionId")
+        )
+        peer_id = (data.get("peerId") or "").strip() or f"web-debug:{debug_session_id}"
+        device_id = (data.get("deviceId") or "").strip() or peer_id
+        client_id = (data.get("clientId") or "manager-web").strip() or "manager-web"
+        speaker = (data.get("speaker") or "管理后台调试").strip() or "管理后台调试"
+        agent_id = (data.get("agentId") or "").strip() or None
+        agent_name = (data.get("agentName") or "").strip() or None
+
+        bind_result = None
+        try:
+            if agent_id:
+                bind_result = await self.openclaw_hub.request(
+                    self.hub_config.get("bind_method", "xiaozhi.bindPeerAgent"),
+                    {
+                        "account": account,
+                        "peerId": peer_id,
+                        "agentId": agent_id,
+                        "agentName": agent_name,
+                    },
+                    bridge_id=bridge_id,
+                    account=account,
+                )
+
+            result = await self.openclaw_hub.request(
+                self.hub_config.get("chat_method", "xiaozhi.chat"),
+                {
+                    "account": account,
+                    "sessionId": debug_session_id,
+                    "deviceId": device_id,
+                    "clientId": client_id,
+                    "peerId": peer_id,
+                    "speaker": speaker,
+                    "text": text,
+                },
+                bridge_id=bridge_id,
+                account=account,
+            )
+            response = web.json_response(
+                {
+                    "ok": True,
+                    "debugSessionId": debug_session_id,
+                    "peerId": peer_id,
+                    "account": account,
+                    "bridgeId": bridge_id,
+                    "bound": bind_result,
+                    "result": result,
+                }
+            )
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"管理员直连 OpenClaw 调试聊天失败: {e}")
             response = web.json_response(
                 {"ok": False, "message": str(e)},
                 status=400,

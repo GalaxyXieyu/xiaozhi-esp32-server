@@ -298,7 +298,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private List<OpenClawChannelDTO> loadChannels() {
-        String raw = sysParamsService.getValue(Constant.SERVER_OPENCLAW_CHANNELS, true);
+        String raw = sysParamsService.getValue(Constant.SERVER_OPENCLAW_CHANNELS, false);
         List<OpenClawChannelDTO> channels = JsonUtils.parseArray(raw, OpenClawChannelDTO.class);
         List<OpenClawChannelDTO> normalized = new ArrayList<>();
         for (OpenClawChannelDTO channel : channels) {
@@ -310,7 +310,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private Map<String, OpenClawAgentBindingDTO> loadBindings() {
-        String raw = sysParamsService.getValue(Constant.SERVER_OPENCLAW_AGENT_BINDINGS, true);
+        String raw = sysParamsService.getValue(Constant.SERVER_OPENCLAW_AGENT_BINDINGS, false);
         if (StringUtils.isBlank(raw)) {
             return new LinkedHashMap<>();
         }

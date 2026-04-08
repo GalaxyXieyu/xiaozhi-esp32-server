@@ -72,6 +72,18 @@
           }" />
           <span class="nav-text">{{ $t("header.modelConfig") }}</span>
         </div>
+        <div
+          v-if="userInfo.superAdmin"
+          class="equipment-management"
+          :class="{ 'active-tab': $route.path === '/openclaw-management' }"
+          @click="goOpenClawManagement"
+        >
+          <img loading="lazy" alt="" src="@/assets/header/param_management.png" :style="{
+            filter:
+              $route.path === '/openclaw-management' ? 'brightness(0) invert(1)' : 'None',
+          }" />
+          <span class="nav-text">OpenClaw 控制台</span>
+        </div>
         <div v-if="featureStatus.knowledgeBase" class="equipment-management"
           :class="{ 'active-tab': $route.path === '/knowledge-base-management' || $route.path === '/knowledge-file-upload' }"
           @click="goKnowledgeBaseManagement">
@@ -340,6 +352,9 @@ export default {
     },
     goModelConfig() {
       this.$router.push("/model-config");
+    },
+    goOpenClawManagement() {
+      this.$router.push("/openclaw-management");
     },
     goKnowledgeBaseManagement() {
       this.$router.push("/knowledge-base-management");

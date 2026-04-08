@@ -52,7 +52,7 @@
                   $t("roleConfig.reset")
                 }}</el-button>
                 <el-button class="openclaw-entry-btn" @click="goToOpenClawManagement">
-                  OpenClaw
+                  OpenClaw 控制台
                 </el-button>
                 <button class="custom-close-btn" @click="goToHome">×</button>
               </div>
@@ -172,7 +172,7 @@
                         </div>
                         <div class="openclaw-binding-actions">
                           <el-button size="small" @click="goToOpenClawManagement">
-                            管理 Channel
+                            打开 OpenClaw 控制台
                           </el-button>
                           <el-button
                             size="small"

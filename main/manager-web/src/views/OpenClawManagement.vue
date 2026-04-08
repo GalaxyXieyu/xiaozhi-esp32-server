@@ -4,8 +4,8 @@
 
     <div class="operation-bar">
       <div class="title-block">
-        <h2 class="page-title">OpenClaw Channel 设置</h2>
-        <p class="page-subtitle">把 Channel 保存下来，系统生成命令给用户复制到 OpenClaw 目录执行，不再暴露底层接入参数。</p>
+        <h2 class="page-title">OpenClaw 控制台</h2>
+        <p class="page-subtitle">统一管理 Channel、运行时语音打断和在线调试。后台入口固定在顶部导航的 “OpenClaw 控制台”。</p>
       </div>
       <div class="page-actions">
         <el-button class="ghost-btn" @click="goToRoleConfig">返回智能体配置</el-button>
@@ -24,12 +24,11 @@
           element-loading-background="rgba(255, 255, 255, 0.72)"
         >
           <div class="hero-card">
-            <div class="hero-main">
-              <div class="hero-label">Command Driven</div>
-              <h3 class="hero-title">保存 Channel，复制命令，回到这里测试</h3>
+              <div class="hero-main">
+              <div class="hero-label">Unified Runtime Console</div>
+              <h3 class="hero-title">保存 Channel，控制语音打断，并在这里做在线调试</h3>
               <p class="hero-description">
-                这页只负责维护 OpenClaw channel 和安装命令。用户不用再理解 `baseUrl / inventoryPath / accessToken`，
-                只要在 OpenClaw 目录执行生成好的 `npx` 命令，再回来同步 inventory 即可。
+                这页现在是 OpenClaw 的统一后台入口。你可以先维护 channel 和安装命令，再继续做设备维度的语音打断控制，最后用在线调试台验证链路。
               </p>
             </div>
             <div class="hero-meta">

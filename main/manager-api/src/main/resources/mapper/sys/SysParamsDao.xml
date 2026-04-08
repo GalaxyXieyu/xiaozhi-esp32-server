@@ -22,6 +22,9 @@
 
     <!-- 根据参数编码，更新value -->
     <update id="updateValueByCode">
-        update sys_params set param_value = #{paramValue} where param_code = #{paramCode}
+        update sys_params
+        set param_value = #{paramValue},
+            update_date = now()
+        where param_code = #{paramCode}
     </update>
 </mapper>

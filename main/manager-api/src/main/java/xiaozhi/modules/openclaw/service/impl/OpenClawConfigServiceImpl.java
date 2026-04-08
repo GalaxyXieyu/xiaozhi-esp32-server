@@ -314,19 +314,33 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         if (StringUtils.isBlank(raw)) {
             return new LinkedHashMap<>();
         }
-        Map<String, OpenClawAgentBindingDTO> bindings = JsonUtils.parseObject(
+        Map<String, Object> bindings = JsonUtils.parseObject(
                 raw,
-                new TypeReference<Map<String, OpenClawAgentBindingDTO>>() {
+                new TypeReference<Map<String, Object>>() {
                 }
         );
         if (bindings == null) {
             return new LinkedHashMap<>();
         }
         Map<String, OpenClawAgentBindingDTO> normalized = new LinkedHashMap<>();
-        for (Map.Entry<String, OpenClawAgentBindingDTO> entry : bindings.entrySet()) {
-            normalized.put(entry.getKey(), normalizeBinding(entry.getValue()));
+        for (Map.Entry<String, Object> entry : bindings.entrySet()) {
+            OpenClawAgentBindingDTO binding = convertBinding(entry.getValue());
+            normalized.put(entry.getKey(), normalizeBinding(binding));
         }
         return normalized;
+    }
+
+    private OpenClawAgentBindingDTO convertBinding(Object rawBinding) {
+        if (rawBinding == null) {
+            return new OpenClawAgentBindingDTO();
+        }
+        if (rawBinding instanceof OpenClawAgentBindingDTO binding) {
+            return binding;
+        }
+        if (rawBinding instanceof String text && StringUtils.isNotBlank(text)) {
+            return JsonUtils.parseObject(text, OpenClawAgentBindingDTO.class);
+        }
+        return JsonUtils.parseObject(JsonUtils.toJsonString(rawBinding), OpenClawAgentBindingDTO.class);
     }
 
     private OpenClawChannelDTO normalizeChannel(OpenClawChannelDTO channel, String serverOrigin) {

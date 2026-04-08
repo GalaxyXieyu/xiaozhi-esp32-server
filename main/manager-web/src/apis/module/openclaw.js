@@ -201,6 +201,26 @@ export default {
                 });
             }).send();
     },
+    getChannelBindings(channelId, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/bindings`)
+            .method('GET')
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getChannelBindings(channelId, callback, failCallback);
+                });
+            }).send();
+    },
     getVoiceInterrupt(channelId, params, callback, failCallback) {
         const search = new URLSearchParams();
         Object.entries(params || {}).forEach(([key, value]) => {

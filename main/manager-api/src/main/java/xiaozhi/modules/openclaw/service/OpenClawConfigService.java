@@ -3,6 +3,7 @@ package xiaozhi.modules.openclaw.service;
 import java.util.List;
 
 import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawChannelBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
@@ -34,6 +35,8 @@ public interface OpenClawConfigService {
     OpenClawClearSessionResponseDTO clearSession(String channelId, OpenClawClearSessionRequestDTO request);
 
     List<OpenClawConnectionDTO> listConnections(String channelId);
+
+    List<OpenClawChannelBindingDTO> listChannelBindings(String channelId, Long userId);
 
     OpenClawVoiceInterruptResponseDTO getVoiceInterrupt(String channelId, OpenClawVoiceInterruptRequestDTO request);
 

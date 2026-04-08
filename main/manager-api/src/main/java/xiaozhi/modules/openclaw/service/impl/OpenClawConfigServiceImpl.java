@@ -24,7 +24,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.AllArgsConstructor;
 import xiaozhi.common.constant.Constant;
 import xiaozhi.common.utils.JsonUtils;
+import xiaozhi.modules.agent.dto.AgentDTO;
+import xiaozhi.modules.agent.service.AgentService;
 import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawChannelBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.BridgeItem;
@@ -48,6 +51,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     private final SysParamsService sysParamsService;
     private final SysParamsDao sysParamsDao;
     private final RestTemplate restTemplate;
+    private final AgentService agentService;
 
     @Override
     public List<OpenClawChannelDTO> getChannels() {
@@ -309,6 +313,45 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             connections.add(connection);
         }
         return connections;
+    }
+
+    @Override
+    public List<OpenClawChannelBindingDTO> listChannelBindings(String channelId, Long userId) {
+        if (StringUtils.isBlank(channelId)) {
+            return new ArrayList<>();
+        }
+        Map<String, OpenClawAgentBindingDTO> bindings = loadBindings();
+        if (bindings.isEmpty() || userId == null) {
+            return new ArrayList<>();
+        }
+
+        List<AgentDTO> agents = agentService.getUserAgents(userId, null, "name");
+        List<OpenClawChannelBindingDTO> results = new ArrayList<>();
+        for (AgentDTO agent : agents) {
+            if (agent == null || StringUtils.isBlank(agent.getId())) {
+                continue;
+            }
+            OpenClawAgentBindingDTO binding = normalizeBinding(bindings.get(agent.getId()));
+            if (!StringUtils.equals(binding.getAgentType(), "openclaw")) {
+                continue;
+            }
+            if (!StringUtils.equals(binding.getChannelId(), channelId)) {
+                continue;
+            }
+            OpenClawChannelBindingDTO item = new OpenClawChannelBindingDTO();
+            item.setAgentId(agent.getId());
+            item.setAgentName(StringUtils.defaultIfBlank(agent.getAgentName(), agent.getId()));
+            item.setAgentType(binding.getAgentType());
+            item.setChannelId(binding.getChannelId());
+            item.setRuntimeAccount(binding.getRuntimeAccount());
+            item.setRuntimeAccountLabel(binding.getRuntimeAccountLabel());
+            item.setOpenclawAgentId(binding.getOpenclawAgentId());
+            item.setOpenclawAgentName(binding.getOpenclawAgentName());
+            item.setSyncStatus(binding.getSyncStatus());
+            item.setErrorMessage(binding.getErrorMessage());
+            results.add(item);
+        }
+        return results;
     }
 
     @Override

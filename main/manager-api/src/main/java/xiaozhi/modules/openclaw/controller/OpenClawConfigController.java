@@ -21,6 +21,7 @@ import xiaozhi.common.user.UserDetail;
 import xiaozhi.common.utils.Result;
 import xiaozhi.modules.agent.service.AgentService;
 import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawChannelBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
@@ -146,6 +147,19 @@ public class OpenClawConfigController {
             return new Result<List<OpenClawConnectionDTO>>().ok(openClawConfigService.listConnections(channelId));
         } catch (Exception e) {
             return new Result<List<OpenClawConnectionDTO>>().error("获取 OpenClaw 在线设备失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/channels/{channelId}/bindings")
+    @Operation(summary = "获取 OpenClaw channel 下的业务智能体绑定关系")
+    @RequiresPermissions("sys:role:normal")
+    public Result<List<OpenClawChannelBindingDTO>> listChannelBindings(@PathVariable String channelId) {
+        try {
+            UserDetail user = SecurityUser.getUser();
+            Long userId = user == null ? null : user.getId();
+            return new Result<List<OpenClawChannelBindingDTO>>().ok(openClawConfigService.listChannelBindings(channelId, userId));
+        } catch (Exception e) {
+            return new Result<List<OpenClawChannelBindingDTO>>().error("获取 OpenClaw 绑定关系失败: " + e.getMessage());
         }
     }
 

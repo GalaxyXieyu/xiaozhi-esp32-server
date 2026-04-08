@@ -50,7 +50,7 @@
               <div class="overview-stat">
                 <span class="overview-stat-label">在线设备</span>
                 <strong class="overview-stat-value">{{ connections.length }}</strong>
-                <span class="overview-stat-note">{{ voiceInterruptScopeText }}</span>
+                <span class="overview-stat-note">{{ bindingSummaryText }}</span>
               </div>
             </div>
           </div>
@@ -66,7 +66,7 @@
                   <span class="tool-count">{{ channels.length }} 个</span>
                 </div>
                 <p class="section-description sidebar-description">
-                  智能体绑定页只消费这里的 channel。左侧只负责选上下文，右侧负责编辑与控制。
+                  先选 channel，再看它下面的 inventory、业务绑定和调试入口。不要再从长页面里反推流程。
                 </p>
                 <div class="sidebar-toolbar">
                   <el-button size="small" type="primary" plain @click="resetDraft">新建</el-button>
@@ -85,7 +85,7 @@
                       <el-tag size="mini" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? "启用" : "停用" }}</el-tag>
                     </div>
                     <span class="channel-url">Account: {{ item.id }}</span>
-                    <span class="channel-hint">{{ item.remark || "保存后可生成安装命令并同步 inventory" }}</span>
+                    <span class="channel-hint">{{ item.remark || "点击进入该 channel 的 inventory、绑定和调试详情" }}</span>
                   </button>
                 </div>
                 <el-empty v-else description="尚未绑定 OpenClaw channel" :image-size="88" />
@@ -109,8 +109,8 @@
                     <strong>{{ inventory.bridges.length || 0 }}</strong>
                   </div>
                   <div class="context-metric">
-                    <span>在线设备</span>
-                    <strong>{{ connections.length || 0 }}</strong>
+                    <span>业务绑定</span>
+                    <strong>{{ channelBindings.length || 0 }}</strong>
                   </div>
                 </div>
                 <div class="step-list compact-step-list">
@@ -120,11 +120,11 @@
                   </div>
                   <div class="step-item">
                     <span class="step-index">2</span>
-                    <span>在右侧 tab 内完成接入、运行时控制与观测</span>
+                    <span>查看这个 channel 下的 inventory 与已绑定业务 agent</span>
                   </div>
                   <div class="step-item">
                     <span class="step-index">3</span>
-                    <span>在线调试统一走弹窗工作台，不再塞回长页面</span>
+                    <span>从绑定关系直接打开调试，验证是不是你要的 OpenClaw agent</span>
                   </div>
                 </div>
               </el-card>
@@ -451,7 +451,7 @@
                           </div>
                         </div>
                         <p class="section-description">
-                          这里展示 channel 实际回传的 runtime/account 与 OpenClaw agent 列表。智能体绑定页会直接消费这些下拉项。
+                          这里展示当前 channel 实际回传的 runtime/account、OpenClaw agent，以及已经挂到这个 channel 的业务智能体。先确认这里，再去调试。
                         </p>
                         <el-alert
                           v-if="inventory.errorMessage"
@@ -495,6 +495,44 @@
                             <el-empty v-else description="当前未返回 OpenClaw agent 选项" :image-size="80" />
                           </div>
                         </div>
+                        <div class="binding-strip" v-loading="bindingsLoading">
+                          <div class="section-header compact-header">
+                            <div>
+                              <div class="inventory-title">已绑定业务 Agent</div>
+                              <div class="command-hint">先看这个 channel 下谁绑定了哪个 OpenClaw agent，再决定调试目标。</div>
+                            </div>
+                            <el-tag size="mini" :type="channelBindings.length ? 'success' : 'info'">{{ bindingSummaryText }}</el-tag>
+                          </div>
+                          <div v-if="channelBindings.length" class="binding-grid">
+                            <div v-for="item in channelBindings" :key="item.agentId" class="binding-card">
+                              <div class="binding-card-head">
+                                <div>
+                                  <div class="bridge-name">{{ item.agentName || item.agentId }}</div>
+                                  <div class="bridge-meta-line">Agent ID: {{ item.agentId }}</div>
+                                </div>
+                                <el-tag size="mini" :type="item.syncStatus === 'connected' ? 'success' : 'info'">
+                                  {{ item.syncStatus || "configured" }}
+                                </el-tag>
+                              </div>
+                              <div class="bridge-meta-line">Runtime / Account: {{ item.runtimeAccountLabel || item.runtimeAccount || "-" }}</div>
+                              <div class="bridge-meta-line">OpenClaw Agent: {{ item.openclawAgentName || item.openclawAgentId || "-" }}</div>
+                              <div v-if="item.errorMessage" class="binding-error">{{ item.errorMessage }}</div>
+                              <div class="binding-actions">
+                                <el-button size="mini" @click="openBoundAgent(item)">查看绑定</el-button>
+                                <el-button
+                                  size="mini"
+                                  type="primary"
+                                  plain
+                                  :disabled="!inventory.runtimeAccounts.length"
+                                  @click="openDebugForBinding(item)"
+                                >
+                                  调试这个 Agent
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                          <el-empty v-else description="这个 channel 下暂时没有业务 Agent 绑定" :image-size="72" />
+                        </div>
                         <div class="runtime-list">
                           <div class="runtime-item">
                             <span class="runtime-path">Source URL</span>
@@ -502,7 +540,7 @@
                           </div>
                           <div class="runtime-item">
                             <span class="runtime-path">绑定策略</span>
-                            <span class="runtime-note">先绑定 Channel，再让智能体表单按 channel 下拉选择 runtime/account 和 OpenClaw agent。</span>
+                            <span class="runtime-note">先选 channel，再确认 inventory 与绑定，再从对应业务 Agent 或调试台验证回复是否来自目标 OpenClaw agent。</span>
                           </div>
                         </div>
                       </div>
@@ -524,7 +562,7 @@
                             </el-button>
                           </div>
                           <p class="section-description">
-                            在线调试已经改成独立弹窗工作台，避免在长页里挤压阅读空间。适合集中验证 channel 路由、agent 选择和回复文本。
+                            在线调试已经改成独立弹窗工作台，并会按 channel / session 保留本地历史。适合集中验证 channel 路由、agent 选择和回复文本。
                           </p>
                           <div class="debug-entry-grid">
                             <div class="debug-entry-stat">
@@ -668,8 +706,10 @@ export default {
       setupGuide: createEmptySetupGuide(),
       voiceInterruptState: createEmptyVoiceInterruptState(),
       connections: [],
+      channelBindings: [],
       voiceInterruptLoading: false,
       connectionsLoading: false,
+      bindingsLoading: false,
       voiceInterruptActionKey: "",
       manualVoiceInterruptDeviceId: "",
       manualVoiceInterruptPersist: true,
@@ -752,6 +792,15 @@ export default {
       }
       return "暂无变更";
     },
+    bindingSummaryText() {
+      if (!this.draft.id) {
+        return "未选择";
+      }
+      if (this.bindingsLoading) {
+        return "读取中";
+      }
+      return this.channelBindings.length ? `${this.channelBindings.length} 个已绑定` : "暂无绑定";
+    },
   },
   watch: {
     "$route.query": {
@@ -831,6 +880,7 @@ export default {
       };
       this.refreshSetupGuide();
       this.syncDraftInventory();
+      this.loadChannelBindings();
       this.refreshVoiceInterruptPanel();
     },
     resetDraft() {
@@ -839,6 +889,7 @@ export default {
       this.setupGuide = createEmptySetupGuide();
       this.voiceInterruptState = createEmptyVoiceInterruptState();
       this.connections = [];
+      this.channelBindings = [];
       this.voiceInterruptActionKey = "";
       this.manualVoiceInterruptDeviceId = "";
       this.manualVoiceInterruptPersist = true;
@@ -863,6 +914,26 @@ export default {
         this.guideLoading = false;
         this.setupGuide = createEmptySetupGuide();
         this.$message.error((data && data.msg) || "生成安装命令失败");
+      });
+    },
+    loadChannelBindings() {
+      if (!this.draft.id) {
+        this.channelBindings = [];
+        return;
+      }
+      this.bindingsLoading = true;
+      Api.openclaw.getChannelBindings(this.draft.id, ({ data }) => {
+        this.bindingsLoading = false;
+        if (data.code === 0) {
+          this.channelBindings = Array.isArray(data.data) ? data.data : [];
+          return;
+        }
+        this.channelBindings = [];
+        this.$message.error(data.msg || "获取绑定关系失败");
+      }, ({ data }) => {
+        this.bindingsLoading = false;
+        this.channelBindings = [];
+        this.$message.error((data && data.msg) || "获取绑定关系失败");
       });
     },
     saveChannels() {
@@ -913,98 +984,7 @@ export default {
         this.$message.error((data && data.msg) || "删除 OpenClaw channel 失败");
       });
     },
-    normalizeChannelPath(path, fallback = "/") {
-      const text = (path || "").trim();
-      if (!text) {
-        return fallback;
-      }
-      return text.startsWith("/") ? text : `/${text}`;
-    },
-    buildChannelApiUrl(path, query = null) {
-      const baseUrl = (this.draft.baseUrl || "").trim().replace(/\/+$/, "");
-      if (!baseUrl) {
-        throw new Error("当前 Channel 缺少 baseUrl");
-      }
-      const url = new URL(`${baseUrl}${this.normalizeChannelPath(path)}`);
-      Object.entries(query || {}).forEach(([key, value]) => {
-        if (value === undefined || value === null || value === "") {
-          return;
-        }
-        url.searchParams.set(key, value);
-      });
-      return url.toString();
-    },
-    buildChannelApiHeaders(includeJson = false) {
-      const headers = {};
-      const accessToken = (this.draft.accessToken || "").trim();
-      if (includeJson) {
-        headers["Content-Type"] = "application/json";
-      }
-      if (accessToken) {
-        headers.Authorization = `Bearer ${accessToken}`;
-        headers["X-OpenClaw-Token"] = accessToken;
-      }
-      return headers;
-    },
-    async requestChannelEndpoint(path, { method = "GET", body = null, query = null } = {}) {
-      const response = await fetch(this.buildChannelApiUrl(path, query), {
-        method,
-        headers: this.buildChannelApiHeaders(Boolean(body)),
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      const rawText = await response.text();
-      let payload = {};
-      if (rawText) {
-        try {
-          payload = JSON.parse(rawText);
-        } catch (error) {
-          throw new Error(`OpenClaw 接口返回了非 JSON 内容（HTTP ${response.status}）`);
-        }
-      }
-      if (!response.ok || payload.ok === false) {
-        throw new Error(
-          payload.message || payload.errorMessage || payload.msg || `OpenClaw 接口请求失败（HTTP ${response.status}）`
-        );
-      }
-      return payload && payload.data ? payload.data : payload;
-    },
-    pickChannelReplyText(result) {
-      if (!result) {
-        return "";
-      }
-      const tryKeys = (source, keys) => {
-        for (const key of keys) {
-          const value = source ? source[key] : "";
-          if (typeof value === "string" && value.trim()) {
-            return value.trim();
-          }
-        }
-        return "";
-      };
-      if (typeof result === "string") {
-        return result.trim();
-      }
-      const directText = tryKeys(result, ["text", "replyText", "reply", "message", "output"]);
-      if (directText) {
-        return directText;
-      }
-      const nestedPayloads = [
-        result.data,
-        result.payload,
-        result.response,
-        result.result,
-      ];
-      for (const item of nestedPayloads) {
-        if (item && typeof item === "object") {
-          const nestedText = tryKeys(item, ["text", "replyText", "reply", "message", "output"]);
-          if (nestedText) {
-            return nestedText;
-          }
-        }
-      }
-      return "";
-    },
-    async syncDraftInventory() {
+    syncDraftInventory() {
       if (!this.draft.id) {
         this.inventory = {
           ...createEmptyInventory(),
@@ -1013,26 +993,50 @@ export default {
         return;
       }
       this.inventoryLoading = true;
-      try {
-        const payload = await this.requestChannelEndpoint(
-          this.draft.inventoryPath || "/inventory"
-        );
+      Api.openclaw.getChannelInventory(this.draft.id, ({ data }) => {
         this.inventoryLoading = false;
+        if (data.code === 0) {
+          this.inventory = {
+            ...createEmptyInventory(),
+            ...(data.data || {}),
+            channelId: this.draft.id,
+          };
+          return;
+        }
         this.inventory = {
           ...createEmptyInventory(),
-          ...(payload || {}),
           channelId: this.draft.id,
-          sourceUrl: this.buildChannelApiUrl(this.draft.inventoryPath || "/inventory"),
+          sourceUrl: (this.draft.baseUrl || "").trim(),
+          errorMessage: data.msg || "同步 OpenClaw inventory 失败",
         };
-      } catch (error) {
+      }, ({ data }) => {
         this.inventoryLoading = false;
         this.inventory = {
           ...createEmptyInventory(),
           channelId: this.draft.id,
           sourceUrl: (this.draft.baseUrl || "").trim(),
-          errorMessage: error.message || "同步 OpenClaw inventory 失败",
+          errorMessage: (data && data.msg) || "同步 OpenClaw inventory 失败",
         };
+      });
+    },
+    openBoundAgent(binding) {
+      if (!binding || !binding.agentId) {
+        return;
       }
+      this.$router.push({
+        path: "/roleConfig",
+        query: { agentId: binding.agentId },
+      });
+    },
+    openDebugForBinding(binding) {
+      this.routePrefill = {
+        channelId: this.draft.id || "",
+        runtimeAccount: binding && binding.runtimeAccount ? binding.runtimeAccount : "",
+        openclawAgentId: binding && binding.openclawAgentId ? binding.openclawAgentId : "",
+        openclawAgentName: binding && binding.openclawAgentName ? binding.openclawAgentName : "",
+        entry: "debug",
+      };
+      this.showDebugDialog = true;
     },
     refreshVoiceInterruptPanel() {
       if (!this.draft.id) {
@@ -1820,6 +1824,47 @@ export default {
   color: #6e7891;
   line-height: 1.6;
   word-break: break-word;
+}
+
+.binding-strip {
+  margin-top: 18px;
+}
+
+.binding-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.binding-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fbff, #f2f6ff);
+  border: 1px solid #dfe8fb;
+}
+
+.binding-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.binding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.binding-error {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff3f0;
+  color: #b14c2a;
+  line-height: 1.6;
 }
 
 .interrupt-shell {

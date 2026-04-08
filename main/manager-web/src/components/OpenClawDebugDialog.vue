@@ -41,6 +41,27 @@
           </div>
         </div>
 
+        <div class="sidebar-card">
+          <div class="sidebar-section-title">调试历史</div>
+          <div v-if="debugHistorySessions.length" class="history-list">
+            <button
+              v-for="item in debugHistorySessions"
+              :key="item.sessionId"
+              class="history-item"
+              :class="{ active: item.sessionId === debugForm.debugSessionId }"
+              @click="restoreDebugHistory(item)"
+            >
+              <div class="history-item-head">
+                <span class="history-session">{{ item.sessionId }}</span>
+                <span class="history-time">{{ item.updatedAtText }}</span>
+              </div>
+              <div class="history-item-meta">{{ item.account || "-" }} / {{ item.agentName || item.agentId || "-" }}</div>
+              <div class="history-item-preview">{{ item.preview || "暂无预览" }}</div>
+            </button>
+          </div>
+          <div v-else class="sidebar-hint">当前 channel 还没有调试历史。发送一次消息后会自动保存在本地。</div>
+        </div>
+
         <div class="sidebar-card hint">
           <div class="sidebar-section-title">说明</div>
           <div class="sidebar-hint">
@@ -200,6 +221,7 @@
 import Api from "@/apis/api";
 
 const createDebugSessionId = () => `web-debug-${Date.now()}`;
+const DEBUG_HISTORY_PREFIX = "openclaw-debug-history:";
 
 const createEmptyDebugForm = () => ({
   account: "",
@@ -210,6 +232,29 @@ const createEmptyDebugForm = () => ({
   inputText: "",
   debugSessionId: createDebugSessionId(),
 });
+
+const safeParseHistory = (raw) => {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const formatHistoryTime = (timestamp) => {
+  if (!timestamp) {
+    return "";
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+};
 
 export default {
   name: "OpenClawDebugDialog",
@@ -236,6 +281,7 @@ export default {
       dialogVisible: false,
       debugForm: createEmptyDebugForm(),
       debugMessages: [],
+      debugHistorySessions: [],
       debugSending: false,
       debugClearing: false,
       routePrefillApplied: false,
@@ -305,6 +351,7 @@ export default {
     visible(val) {
       this.dialogVisible = val;
       if (val) {
+        this.loadDebugHistory();
         this.applyDebugDefaults();
       }
     },
@@ -318,6 +365,7 @@ export default {
         return;
       }
       this.resetDebugState();
+      this.loadDebugHistory();
       if (this.dialogVisible) {
         this.applyDebugDefaults();
       }
@@ -338,9 +386,69 @@ export default {
     resetDebugState() {
       this.debugForm = createEmptyDebugForm();
       this.debugMessages = [];
+      this.debugHistorySessions = [];
       this.debugSending = false;
       this.debugClearing = false;
       this.routePrefillApplied = false;
+    },
+    getHistoryStorageKey() {
+      return `${DEBUG_HISTORY_PREFIX}${this.channelId || "unknown"}`;
+    },
+    loadDebugHistory() {
+      if (!this.channelId || typeof window === "undefined") {
+        this.debugHistorySessions = [];
+        return;
+      }
+      const items = safeParseHistory(window.localStorage.getItem(this.getHistoryStorageKey()))
+        .map((item) => ({
+          ...item,
+          updatedAtText: formatHistoryTime(item.updatedAt),
+        }))
+        .filter((item) => item && item.sessionId);
+      this.debugHistorySessions = items;
+    },
+    persistDebugHistory() {
+      if (!this.channelId || typeof window === "undefined") {
+        return;
+      }
+      window.localStorage.setItem(this.getHistoryStorageKey(), JSON.stringify(this.debugHistorySessions));
+    },
+    syncCurrentHistoryEntry() {
+      if (!this.channelId || !this.debugForm.debugSessionId) {
+        return;
+      }
+      const sessionId = this.debugForm.debugSessionId;
+      if (!this.debugMessages.length) {
+        this.debugHistorySessions = this.debugHistorySessions.filter((item) => item.sessionId !== sessionId);
+        this.persistDebugHistory();
+        return;
+      }
+      const lastMessage = this.debugMessages[this.debugMessages.length - 1] || {};
+      const entry = {
+        sessionId,
+        account: this.debugForm.account,
+        bridgeId: this.debugForm.bridgeId,
+        agentId: this.debugForm.agentId,
+        agentName: this.debugForm.agentName,
+        preview: (lastMessage.text || "").slice(0, 72),
+        updatedAt: Date.now(),
+        updatedAtText: formatHistoryTime(Date.now()),
+        messages: this.debugMessages,
+      };
+      this.debugHistorySessions = [
+        entry,
+        ...this.debugHistorySessions.filter((item) => item.sessionId !== sessionId),
+      ].slice(0, 12);
+      this.persistDebugHistory();
+    },
+    restoreLatestHistory() {
+      if (this.routePrefill && this.routePrefill.entry === "debug") {
+        return;
+      }
+      if (!this.debugHistorySessions.length || this.debugMessages.length) {
+        return;
+      }
+      this.restoreDebugHistory(this.debugHistorySessions[0], false);
     },
     applyDebugDefaults() {
       if (!this.channelId) {
@@ -393,6 +501,7 @@ export default {
       if (!this.routePrefillApplied) {
         this.routePrefillApplied = true;
       }
+      this.restoreLatestHistory();
     },
     syncDebugBridge() {
       if (!this.bridgeOptions.length) {
@@ -434,6 +543,7 @@ export default {
     createDebugSession() {
       this.debugForm.debugSessionId = createDebugSessionId();
       this.debugMessages = [];
+      this.syncCurrentHistoryEntry();
       this.$message.success("已创建新的 OpenClaw 调试会话");
     },
     rotateDebugSession(preserveTranscript = false) {
@@ -441,9 +551,11 @@ export default {
       if (!preserveTranscript) {
         this.debugMessages = [];
       }
+      this.syncCurrentHistoryEntry();
     },
     clearDebugTranscript() {
       this.debugMessages = [];
+      this.syncCurrentHistoryEntry();
     },
     appendDebugMessage(role, text, extra = {}) {
       this.debugMessages.push({
@@ -458,6 +570,21 @@ export default {
           container.scrollTop = container.scrollHeight;
         }
       });
+      this.syncCurrentHistoryEntry();
+    },
+    restoreDebugHistory(item, showMessage = true) {
+      if (!item || !item.sessionId) {
+        return;
+      }
+      this.debugForm.account = item.account || this.debugForm.account;
+      this.debugForm.bridgeId = item.bridgeId || "";
+      this.debugForm.agentId = item.agentId || "";
+      this.debugForm.agentName = item.agentName || item.agentId || "";
+      this.debugForm.debugSessionId = item.sessionId;
+      this.debugMessages = Array.isArray(item.messages) ? item.messages : [];
+      if (showMessage) {
+        this.$message.success("已恢复本地调试历史");
+      }
     },
     clearDebugSession() {
       if (!this.channelId || !this.debugForm.account || !this.debugForm.debugSessionId) {
@@ -645,6 +772,64 @@ export default {
   margin-top: 12px;
   color: #6d5c33;
   line-height: 1.7;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.history-item {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f4;
+  border-radius: 14px;
+  background: #f8fbff;
+  text-align: left;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.history-item:hover {
+  border-color: #b8c8ef;
+  transform: translateY(-1px);
+}
+
+.history-item.active {
+  border-color: #5c7ce2;
+  box-shadow: 0 8px 18px rgba(92, 124, 226, 0.12);
+  background: #eef3ff;
+}
+
+.history-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.history-session {
+  font-size: 12px;
+  font-weight: 700;
+  color: #29407d;
+}
+
+.history-time,
+.history-item-meta,
+.history-item-preview {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6d7892;
+}
+
+.history-item-meta,
+.history-item-preview {
+  margin-top: 6px;
+}
+
+.history-item-preview {
+  color: #33425f;
 }
 
 .debug-main {

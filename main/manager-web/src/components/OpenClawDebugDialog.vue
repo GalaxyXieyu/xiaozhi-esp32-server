@@ -450,6 +450,20 @@ export default {
       }
       this.restoreDebugHistory(this.debugHistorySessions[0], false);
     },
+    syncDebugAgent() {
+      const agentOptions = this.currentDebugAgentOptions;
+      if (!agentOptions.some((item) => item.value === this.debugForm.agentId)) {
+        const firstAgent = agentOptions[0];
+        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
+        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
+        return;
+      }
+      this.debugForm.agentName = this.findOptionLabel(
+        agentOptions,
+        this.debugForm.agentId,
+        this.debugForm.agentName || this.debugForm.agentId
+      );
+    },
     applyDebugDefaults() {
       if (!this.channelId) {
         this.debugForm.account = "";
@@ -486,17 +500,7 @@ export default {
           this.debugForm.agentName = matchedAgent.label;
         }
       }
-      if (!currentAgents.some((item) => item.value === this.debugForm.agentId)) {
-        const firstAgent = currentAgents[0];
-        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
-        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
-      } else {
-        this.debugForm.agentName = this.findOptionLabel(
-          currentAgents,
-          this.debugForm.agentId,
-          this.debugForm.agentName || this.debugForm.agentId
-        );
-      }
+      this.syncDebugAgent();
 
       if (!this.routePrefillApplied) {
         this.routePrefillApplied = true;
@@ -508,25 +512,21 @@ export default {
         this.debugForm.bridgeId = "";
         return;
       }
-      const currentBridgeExists = this.bridgeOptions.some((item) => item.bridgeId === this.debugForm.bridgeId);
-      if (currentBridgeExists) {
+      const currentBridge = this.bridgeOptions.find((item) => item.bridgeId === this.debugForm.bridgeId);
+      const preferredBridge = this.bridgeOptions.find((item) => item.connected) || this.bridgeOptions[0];
+      if (!preferredBridge) {
+        this.debugForm.bridgeId = "";
         return;
       }
-      const preferredBridge = this.bridgeOptions.find((item) => item.connected) || this.bridgeOptions[0];
-      this.debugForm.bridgeId = preferredBridge ? preferredBridge.bridgeId : "";
+      if (currentBridge && (currentBridge.connected || !preferredBridge.connected)) {
+        return;
+      }
+      this.debugForm.bridgeId = preferredBridge.bridgeId;
     },
     handleDebugAccountChange(value) {
       this.debugForm.account = value;
       this.syncDebugBridge();
-      const agentOptions = this.currentDebugAgentOptions;
-      const matched = agentOptions.find((item) => item.value === this.debugForm.agentId);
-      if (!matched) {
-        const firstAgent = agentOptions[0];
-        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
-        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
-        return;
-      }
-      this.debugForm.agentName = matched.label;
+      this.syncDebugAgent();
     },
     handleDebugAgentChange(value) {
       this.debugForm.agentId = value;
@@ -577,9 +577,14 @@ export default {
         return;
       }
       this.debugForm.account = item.account || this.debugForm.account;
+      if (!this.runtimeAccounts.some((option) => option.value === this.debugForm.account)) {
+        this.debugForm.account = this.runtimeAccounts.length ? this.runtimeAccounts[0].value : "";
+      }
       this.debugForm.bridgeId = item.bridgeId || "";
       this.debugForm.agentId = item.agentId || "";
       this.debugForm.agentName = item.agentName || item.agentId || "";
+      this.syncDebugBridge();
+      this.syncDebugAgent();
       this.debugForm.debugSessionId = item.sessionId;
       this.debugMessages = Array.isArray(item.messages) ? item.messages : [];
       if (showMessage) {

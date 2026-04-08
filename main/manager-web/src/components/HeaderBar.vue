@@ -75,14 +75,16 @@
         <div
           v-if="userInfo.superAdmin"
           class="equipment-management"
-          :class="{ 'active-tab': $route.path === '/openclaw-management' }"
+          :class="{ 'active-tab': $route.path === '/openclaw-management' || $route.path === '/device-runtime-control' }"
           @click="goOpenClawManagement"
         >
           <img loading="lazy" alt="" src="@/assets/header/param_management.png" :style="{
             filter:
-              $route.path === '/openclaw-management' ? 'brightness(0) invert(1)' : 'None',
+              $route.path === '/openclaw-management' || $route.path === '/device-runtime-control'
+                ? 'brightness(0) invert(1)'
+                : 'None',
           }" />
-          <span class="nav-text">OpenClaw 控制台</span>
+          <span class="nav-text">设备运行时控制</span>
         </div>
         <div v-if="featureStatus.knowledgeBase" class="equipment-management"
           :class="{ 'active-tab': $route.path === '/knowledge-base-management' || $route.path === '/knowledge-file-upload' }"

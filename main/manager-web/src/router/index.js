@@ -123,13 +123,14 @@ const routes = [
   },
   {
     path: '/openclaw-management',
+    alias: '/device-runtime-control',
     name: 'OpenClawManagement',
     component: function () {
       return import('../views/OpenClawManagement.vue')
     },
     meta: {
       requiresAuth: true,
-      title: 'OpenClaw 管理'
+      title: '设备运行时控制台'
     }
   },
   {

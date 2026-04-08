@@ -52,7 +52,7 @@
                   $t("roleConfig.reset")
                 }}</el-button>
                 <el-button class="openclaw-entry-btn" @click="goToOpenClawManagement">
-                  OpenClaw 控制台
+                  设备运行时控制台
                 </el-button>
                 <button class="custom-close-btn" @click="goToHome">×</button>
               </div>
@@ -172,7 +172,7 @@
                         </div>
                         <div class="openclaw-binding-actions">
                           <el-button size="small" @click="goToOpenClawManagement">
-                            打开 OpenClaw 控制台
+                            打开设备运行时控制台
                           </el-button>
                           <el-button
                             size="small"
@@ -646,7 +646,7 @@ export default {
     goToOpenClawManagement() {
       const agentId = this.$route.query.agentId;
       if (!agentId) {
-        this.$message.warning("当前智能体未加载，无法进入 OpenClaw 管理页");
+        this.$message.warning("当前智能体未加载，无法进入设备运行时控制台");
         return;
       }
       const query = { agentId };

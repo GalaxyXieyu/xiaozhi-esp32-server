@@ -4,8 +4,8 @@
 
     <div class="operation-bar">
       <div class="title-block">
-        <h2 class="page-title">OpenClaw 控制台</h2>
-        <p class="page-subtitle">统一管理 Channel、运行时语音打断和在线调试。后台入口固定在顶部导航的 “OpenClaw 控制台”。</p>
+        <h2 class="page-title">设备运行时控制台</h2>
+        <p class="page-subtitle">统一管理设备播报打断，并保留 OpenClaw Channel 与在线调试能力。后台入口固定在顶部导航的“设备运行时控制”。</p>
       </div>
       <div class="page-actions">
         <el-button class="ghost-btn" @click="goToRoleConfig">返回智能体配置</el-button>
@@ -24,11 +24,11 @@
           element-loading-background="rgba(255, 255, 255, 0.72)"
         >
           <div class="hero-card">
-              <div class="hero-main">
+            <div class="hero-main">
               <div class="hero-label">Unified Runtime Console</div>
-              <h3 class="hero-title">保存 Channel，控制语音打断，并在这里做在线调试</h3>
+              <h3 class="hero-title">优先控制设备播报打断，需要时再管理 Channel 和在线调试</h3>
               <p class="hero-description">
-                这页现在是 OpenClaw 的统一后台入口。你可以先维护 channel 和安装命令，再继续做设备维度的语音打断控制，最后用在线调试台验证链路。
+                这页现在承载设备运行时控制。语音打断是通用设备能力，适用于同一 runtime 下的原生和 OpenClaw 设备；下面的 Channel、Inventory 和在线调试则是 OpenClaw 辅助能力。
               </p>
             </div>
             <div class="hero-meta">

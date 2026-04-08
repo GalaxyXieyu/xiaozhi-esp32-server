@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,8 +25,11 @@ import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
 import xiaozhi.modules.security.user.SecurityUser;
 
@@ -93,6 +97,51 @@ public class OpenClawConfigController {
             return new Result<OpenClawClearSessionResponseDTO>().ok(openClawConfigService.clearSession(channelId, request));
         } catch (Exception e) {
             return new Result<OpenClawClearSessionResponseDTO>().error("清理 OpenClaw 会话失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/channels/{channelId}/connections")
+    @Operation(summary = "获取 OpenClaw 在线设备连接")
+    @RequiresPermissions("sys:role:normal")
+    public Result<List<OpenClawConnectionDTO>> listConnections(@PathVariable String channelId) {
+        try {
+            return new Result<List<OpenClawConnectionDTO>>().ok(openClawConfigService.listConnections(channelId));
+        } catch (Exception e) {
+            return new Result<List<OpenClawConnectionDTO>>().error("获取 OpenClaw 在线设备失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/channels/{channelId}/voice-interrupt")
+    @Operation(summary = "获取 OpenClaw 运行时语音打断状态")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawVoiceInterruptResponseDTO> getVoiceInterrupt(
+            @PathVariable String channelId,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String deviceId,
+            @RequestParam(required = false) String peerId,
+            @RequestParam(required = false) Boolean allowLatest) {
+        try {
+            OpenClawVoiceInterruptRequestDTO request = new OpenClawVoiceInterruptRequestDTO();
+            request.setSessionId(sessionId);
+            request.setDeviceId(deviceId);
+            request.setPeerId(peerId);
+            request.setAllowLatest(allowLatest);
+            return new Result<OpenClawVoiceInterruptResponseDTO>().ok(openClawConfigService.getVoiceInterrupt(channelId, request));
+        } catch (Exception e) {
+            return new Result<OpenClawVoiceInterruptResponseDTO>().error("获取 OpenClaw 语音打断状态失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/channels/{channelId}/voice-interrupt")
+    @Operation(summary = "设置 OpenClaw 运行时语音打断")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawVoiceInterruptResponseDTO> setVoiceInterrupt(
+            @PathVariable String channelId,
+            @RequestBody OpenClawVoiceInterruptRequestDTO request) {
+        try {
+            return new Result<OpenClawVoiceInterruptResponseDTO>().ok(openClawConfigService.setVoiceInterrupt(channelId, request));
+        } catch (Exception e) {
+            return new Result<OpenClawVoiceInterruptResponseDTO>().error("设置 OpenClaw 语音打断失败: " + e.getMessage());
         }
     }
 

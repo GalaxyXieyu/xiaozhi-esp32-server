@@ -15,11 +15,13 @@ class SimpleHttpServer:
         openclaw_hub=None,
         connection_registry=None,
         websocket_server=None,
+        voice_interrupt_store=None,
     ):
         self.config = config
         self.openclaw_hub = openclaw_hub
         self.connection_registry = connection_registry
         self.websocket_server = websocket_server
+        self.voice_interrupt_store = voice_interrupt_store
         self.logger = setup_logging()
         self.ota_handler = OTAHandler(config)
         self.vision_handler = VisionHandler(config)
@@ -29,6 +31,7 @@ class SimpleHttpServer:
                 openclaw_hub=openclaw_hub,
                 connection_registry=connection_registry,
                 websocket_server=websocket_server,
+                voice_interrupt_store=voice_interrupt_store,
             )
             if openclaw_hub or connection_registry or websocket_server
             else None

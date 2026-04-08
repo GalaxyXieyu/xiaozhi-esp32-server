@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from aiohttp import web
@@ -14,11 +16,13 @@ class OpenClawAdminHandler(BaseHandler):
         openclaw_hub=None,
         connection_registry=None,
         websocket_server=None,
+        voice_interrupt_store=None,
     ):
         super().__init__(config)
         self.openclaw_hub = openclaw_hub
         self.connection_registry = connection_registry
         self.websocket_server = websocket_server
+        self.voice_interrupt_store = voice_interrupt_store
         self.hub_config = config.get("openclaw_hub", {}) or {}
 
     def _get_admin_key(self) -> str:
@@ -44,6 +48,19 @@ class OpenClawAdminHandler(BaseHandler):
         if self.websocket_server is not None:
             return bool(self.websocket_server.config.get("enable_voice_interrupt", True))
         return bool(self.config.get("enable_voice_interrupt", True))
+
+    def _parse_target_ref(self, value):
+        normalized = (value or "").strip()
+        return normalized or None
+
+    def _get_voice_interrupt_scope(
+        self, *, session_id: str | None = None, device_id: str | None = None
+    ) -> str:
+        if session_id:
+            return "session"
+        if device_id:
+            return "device"
+        return "global"
 
     def _parse_bool(self, value):
         if isinstance(value, bool):
@@ -148,10 +165,68 @@ class OpenClawAdminHandler(BaseHandler):
         if unauthorized:
             return unauthorized
 
+        session_id = self._parse_target_ref(request.query.get("sessionId"))
+        device_id = self._parse_target_ref(request.query.get("deviceId"))
+        peer_id = self._parse_target_ref(request.query.get("peerId"))
+        allow_latest = bool(self._parse_bool(request.query.get("allowLatest")))
+
+        if session_id or device_id or peer_id:
+            registry = self._get_connection_registry()
+            if registry is not None:
+                state = await registry.get_voice_interrupt_state(
+                    session_id=session_id,
+                    device_id=device_id,
+                    peer_id=peer_id,
+                    allow_latest=allow_latest,
+                )
+                if state is not None:
+                    response = web.json_response(
+                        {
+                            "ok": True,
+                            "enabled": state["enabled"],
+                            "scope": self._get_voice_interrupt_scope(
+                                session_id=state.get("sessionId"),
+                                device_id=state.get("deviceId") or device_id,
+                            ),
+                            "source": "connection",
+                            "sessionId": state.get("sessionId"),
+                            "deviceId": state.get("deviceId"),
+                        }
+                    )
+                    self._add_cors_headers(response)
+                    return response
+
+            if device_id and self.voice_interrupt_store is not None:
+                persisted_enabled = self.voice_interrupt_store.get_device_voice_interrupt(
+                    device_id
+                )
+                if persisted_enabled is not None:
+                    response = web.json_response(
+                        {
+                            "ok": True,
+                            "enabled": persisted_enabled,
+                            "scope": "device",
+                            "source": "persisted",
+                            "online": False,
+                            "deviceId": device_id,
+                        }
+                    )
+                    self._add_cors_headers(response)
+                    return response
+
+            response = web.json_response(
+                {"ok": False, "message": "没有找到对应的语音打断状态"},
+                status=404,
+            )
+            self._add_cors_headers(response)
+            return response
+
         response = web.json_response(
             {
                 "ok": True,
                 "enabled": self._get_voice_interrupt_enabled(),
+                "scope": "global",
+                "source": "runtime-default",
             }
         )
         self._add_cors_headers(response)
@@ -176,20 +251,106 @@ class OpenClawAdminHandler(BaseHandler):
             self._add_cors_headers(response)
             return response
 
-        self.config["enable_voice_interrupt"] = enabled
-        if self.websocket_server is not None:
-            self.websocket_server.config["enable_voice_interrupt"] = enabled
+        session_id = self._parse_target_ref(data.get("sessionId"))
+        device_id = self._parse_target_ref(data.get("deviceId"))
+        peer_id = self._parse_target_ref(data.get("peerId"))
+        scope = self._get_voice_interrupt_scope(
+            session_id=session_id, device_id=device_id or peer_id
+        )
+        persist_requested = self._parse_bool(data.get("persist"))
+        if persist_requested is None:
+            persist_requested = False
 
-        updated = {"enabled": enabled, "updatedCount": 0}
         registry = self._get_connection_registry()
-        if registry is not None:
-            updated = await registry.set_voice_interrupt_enabled(enabled)
+        updated = {"enabled": enabled, "updatedCount": 0, "skippedCount": 0}
+        persisted = False
+        persisted_device_id = device_id
+
+        if scope == "global":
+            if persist_requested:
+                response = web.json_response(
+                    {"ok": False, "message": "全局语音打断开关不支持 persist"},
+                    status=400,
+                )
+                self._add_cors_headers(response)
+                return response
+
+            self.config["enable_voice_interrupt"] = enabled
+            if self.websocket_server is not None:
+                self.websocket_server.config["enable_voice_interrupt"] = enabled
+
+            skip_device_ids = (
+                self.voice_interrupt_store.list_device_ids()
+                if self.voice_interrupt_store is not None
+                else set()
+            )
+            if registry is not None:
+                updated = await registry.set_voice_interrupt_enabled(
+                    enabled, skip_device_ids=skip_device_ids
+                )
+        else:
+            allow_latest = bool(self._parse_bool(data.get("allowLatest")))
+            if registry is not None:
+                updated = await registry.set_voice_interrupt_for_connection(
+                    enabled,
+                    session_id=session_id,
+                    device_id=device_id,
+                    peer_id=peer_id,
+                    allow_latest=allow_latest,
+                )
+
+            if persist_requested:
+                persisted_device_id = (
+                    device_id
+                    or updated.get("deviceId")
+                    or self._parse_target_ref(data.get("persistDeviceId"))
+                )
+                if not persisted_device_id:
+                    response = web.json_response(
+                        {
+                            "ok": False,
+                            "message": "persist=true 时必须提供 deviceId，或命中带 deviceId 的在线连接",
+                        },
+                        status=400,
+                    )
+                    self._add_cors_headers(response)
+                    return response
+                if self.voice_interrupt_store is None:
+                    response = web.json_response(
+                        {"ok": False, "message": "语音打断持久化能力未启用"},
+                        status=400,
+                    )
+                    self._add_cors_headers(response)
+                    return response
+                await self.voice_interrupt_store.set_device_voice_interrupt(
+                    persisted_device_id, enabled
+                )
+                persisted = True
+
+            if updated.get("updatedCount", 0) == 0 and not persisted:
+                response = web.json_response(
+                    {
+                        "ok": False,
+                        "message": "没有找到在线的小智设备连接",
+                        "scope": scope,
+                        "sessionId": session_id,
+                        "deviceId": device_id,
+                    },
+                    status=404,
+                )
+                self._add_cors_headers(response)
+                return response
 
         response = web.json_response(
             {
                 "ok": True,
                 "enabled": enabled,
+                "scope": scope,
                 "updatedConnections": updated.get("updatedCount", 0),
+                "skippedConnections": updated.get("skippedCount", 0),
+                "persisted": persisted,
+                "sessionId": updated.get("sessionId") or session_id,
+                "deviceId": persisted_device_id or updated.get("deviceId") or device_id,
             }
         )
         self._add_cors_headers(response)

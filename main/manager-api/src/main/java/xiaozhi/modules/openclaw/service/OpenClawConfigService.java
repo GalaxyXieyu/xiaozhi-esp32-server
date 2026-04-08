@@ -8,8 +8,11 @@ import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptResponseDTO;
 
 public interface OpenClawConfigService {
     List<OpenClawChannelDTO> getChannels();
@@ -23,6 +26,12 @@ public interface OpenClawConfigService {
     OpenClawDebugChatResponseDTO directChat(String channelId, OpenClawDebugChatRequestDTO request);
 
     OpenClawClearSessionResponseDTO clearSession(String channelId, OpenClawClearSessionRequestDTO request);
+
+    List<OpenClawConnectionDTO> listConnections(String channelId);
+
+    OpenClawVoiceInterruptResponseDTO getVoiceInterrupt(String channelId, OpenClawVoiceInterruptRequestDTO request);
+
+    OpenClawVoiceInterruptResponseDTO setVoiceInterrupt(String channelId, OpenClawVoiceInterruptRequestDTO request);
 
     OpenClawAgentBindingDTO getAgentBinding(String agentId);
 

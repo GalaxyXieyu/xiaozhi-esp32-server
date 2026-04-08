@@ -119,6 +119,74 @@ export default {
                 });
             }).send();
     },
+    getConnections(channelId, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/connections`)
+            .method('GET')
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getConnections(channelId, callback, failCallback);
+                });
+            }).send();
+    },
+    getVoiceInterrupt(channelId, params, callback, failCallback) {
+        const search = new URLSearchParams();
+        Object.entries(params || {}).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== "") {
+                search.append(key, value);
+            }
+        });
+        const query = search.toString();
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/voice-interrupt${query ? `?${query}` : ''}`)
+            .method('GET')
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getVoiceInterrupt(channelId, params, callback, failCallback);
+                });
+            }).send();
+    },
+    setVoiceInterrupt(channelId, data, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/voice-interrupt`)
+            .method('POST')
+            .data(data)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.setVoiceInterrupt(channelId, data, callback, failCallback);
+                });
+            }).send();
+    },
     getAgentBinding(agentId, callback, failCallback) {
         RequestService.sendRequest()
             .url(`${getServiceUrl()}/openclaw-config/agents/${agentId}`)

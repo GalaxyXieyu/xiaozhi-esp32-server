@@ -252,6 +252,187 @@
           <el-card class="surface-card wide-card console-card" shadow="never">
             <div class="section-header">
               <div>
+                <div class="section-eyebrow">Runtime Voice Interrupt</div>
+                <h3>运行时语音打断</h3>
+              </div>
+              <div class="inventory-tags">
+                <el-tag :type="voiceInterruptState.enabled ? 'success' : 'info'">
+                  {{ voiceInterruptState.enabled ? "当前开启" : "当前关闭" }}
+                </el-tag>
+                <el-tag size="mini" type="info">{{ voiceInterruptScopeText }}</el-tag>
+                <el-button size="small" :loading="voiceInterruptLoading || connectionsLoading" @click="refreshVoiceInterruptPanel">
+                  刷新
+                </el-button>
+              </div>
+            </div>
+            <p class="section-description">
+              这里只控制 server-side speech interrupt，也就是设备播报时是否允许被人声打断；不是整机唤醒词、不是常开收音总开关。
+            </p>
+            <el-alert
+              v-if="!draft.id"
+              title="请先保存并选择一个 Channel，再管理运行时语音打断。"
+              type="info"
+              :closable="false"
+              show-icon
+              class="top-alert"
+            />
+            <div v-else class="interrupt-shell">
+              <div class="interrupt-summary-grid">
+                <div class="interrupt-summary-card">
+                  <div class="interrupt-summary-label">状态来源</div>
+                  <div class="interrupt-summary-value">{{ voiceInterruptSourceText }}</div>
+                </div>
+                <div class="interrupt-summary-card">
+                  <div class="interrupt-summary-label">作用范围</div>
+                  <div class="interrupt-summary-value">{{ voiceInterruptScopeText }}</div>
+                </div>
+                <div class="interrupt-summary-card">
+                  <div class="interrupt-summary-label">当前定位</div>
+                  <div class="interrupt-summary-value">{{ voiceInterruptTargetText }}</div>
+                </div>
+                <div class="interrupt-summary-card">
+                  <div class="interrupt-summary-label">最近变更</div>
+                  <div class="interrupt-summary-value">{{ voiceInterruptUpdateText }}</div>
+                </div>
+              </div>
+
+              <div class="interrupt-control-block">
+                <div>
+                  <div class="inventory-title">全局默认值</div>
+                  <div class="command-hint">会同步更新当前在线连接，但已持久化到设备维度的机器会被跳过。</div>
+                </div>
+                <div class="inline-actions">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :loading="voiceInterruptActionKey === 'global-on'"
+                    @click="setGlobalVoiceInterrupt(true)"
+                  >
+                    全局开启
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="warning"
+                    plain
+                    :loading="voiceInterruptActionKey === 'global-off'"
+                    @click="setGlobalVoiceInterrupt(false)"
+                  >
+                    全局关闭
+                  </el-button>
+                </div>
+              </div>
+
+              <div class="interrupt-control-block">
+                <div>
+                  <div class="inventory-title">按设备 ID 控制</div>
+                  <div class="command-hint">适合后台直接指定某台 ESP32。勾选“持久化”后，新连接建立时也会沿用该设备配置。</div>
+                </div>
+                <div class="interrupt-manual-row">
+                  <el-input
+                    v-model.trim="manualVoiceInterruptDeviceId"
+                    class="interrupt-device-input"
+                    placeholder="输入 deviceId，例如 MAC 或业务设备号"
+                  />
+                  <el-checkbox v-model="manualVoiceInterruptPersist">持久化到设备</el-checkbox>
+                  <el-button
+                    size="small"
+                    :loading="voiceInterruptActionKey === 'inspect-device'"
+                    @click="inspectManualVoiceInterrupt"
+                  >
+                    查询
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :loading="voiceInterruptActionKey === 'device-on'"
+                    @click="applyManualVoiceInterrupt(true)"
+                  >
+                    开启
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="warning"
+                    plain
+                    :loading="voiceInterruptActionKey === 'device-off'"
+                    @click="applyManualVoiceInterrupt(false)"
+                  >
+                    关闭
+                  </el-button>
+                </div>
+              </div>
+
+              <div class="bridge-strip">
+                <div class="section-header compact-header">
+                  <div>
+                    <div class="inventory-title">当前在线设备</div>
+                    <div class="command-hint">“当前连接”只影响这次在线会话；“按设备”会写成设备维度策略。</div>
+                  </div>
+                  <el-tag size="mini" :type="connections.length ? 'success' : 'info'">{{ connections.length }} 台在线</el-tag>
+                </div>
+                <div v-if="connections.length" class="connection-grid">
+                  <div v-for="item in connections" :key="item.sessionId" class="connection-card">
+                    <div class="connection-card-head">
+                      <div>
+                        <div class="bridge-name">{{ item.deviceId || item.sessionId }}</div>
+                        <div class="bridge-meta-line">Session: {{ item.sessionId || "-" }}</div>
+                      </div>
+                      <div class="inventory-tags">
+                        <el-tag size="mini" :type="item.voiceInterruptEnabled ? 'success' : 'info'">
+                          {{ item.voiceInterruptEnabled ? "可打断" : "不可打断" }}
+                        </el-tag>
+                        <el-tag v-if="item.isLatest" size="mini" type="warning">Latest</el-tag>
+                      </div>
+                    </div>
+                    <div class="bridge-meta-line">Device ID: {{ item.deviceId || "-" }}</div>
+                    <div class="bridge-meta-line">Client IP: {{ item.clientIp || "-" }}</div>
+                    <div class="bridge-meta-line">连接时间: {{ formatConnectionTime(item.registeredAt) }}</div>
+                    <div class="connection-actions">
+                      <el-button
+                        size="mini"
+                        type="primary"
+                        :loading="voiceInterruptActionKey === `session-on:${item.sessionId}`"
+                        @click="setConnectionVoiceInterrupt(item, true, false)"
+                      >
+                        当前连接开启
+                      </el-button>
+                      <el-button
+                        size="mini"
+                        type="warning"
+                        plain
+                        :loading="voiceInterruptActionKey === `session-off:${item.sessionId}`"
+                        @click="setConnectionVoiceInterrupt(item, false, false)"
+                      >
+                        当前连接关闭
+                      </el-button>
+                      <el-button
+                        size="mini"
+                        plain
+                        :disabled="!item.deviceId"
+                        :loading="voiceInterruptActionKey === `persist-on:${item.deviceId}`"
+                        @click="setConnectionVoiceInterrupt(item, true, true)"
+                      >
+                        按设备开启
+                      </el-button>
+                      <el-button
+                        size="mini"
+                        plain
+                        :disabled="!item.deviceId"
+                        :loading="voiceInterruptActionKey === `persist-off:${item.deviceId}`"
+                        @click="setConnectionVoiceInterrupt(item, false, true)"
+                      >
+                        按设备关闭
+                      </el-button>
+                    </div>
+                  </div>
+                </div>
+                <el-empty v-else description="当前没有在线 ESP32 连接" :image-size="72" />
+              </div>
+            </div>
+          </el-card>
+
+          <el-card class="surface-card wide-card console-card" shadow="never">
+            <div class="section-header">
+              <div>
                 <div class="section-eyebrow">Online Console</div>
                 <h3>OpenClaw 在线调试台</h3>
               </div>
@@ -444,6 +625,21 @@ const createEmptySetupGuide = () => ({
   installCommand: "",
 });
 
+const createEmptyVoiceInterruptState = () => ({
+  channelId: "",
+  sourceUrl: "",
+  enabled: true,
+  scope: "global",
+  source: "runtime-default",
+  sessionId: "",
+  deviceId: "",
+  updatedConnections: 0,
+  skippedConnections: 0,
+  persisted: false,
+  online: null,
+  rawResult: {},
+});
+
 const createDebugSessionId = () => `web-debug-${Date.now()}`;
 
 const createEmptyDebugForm = () => ({
@@ -481,6 +677,13 @@ export default {
       draft: createEmptyChannel(),
       inventory: createEmptyInventory(),
       setupGuide: createEmptySetupGuide(),
+      voiceInterruptState: createEmptyVoiceInterruptState(),
+      connections: [],
+      voiceInterruptLoading: false,
+      connectionsLoading: false,
+      voiceInterruptActionKey: "",
+      manualVoiceInterruptDeviceId: "",
+      manualVoiceInterruptPersist: true,
       debugForm: createEmptyDebugForm(),
       debugMessages: [],
       debugSending: false,
@@ -524,6 +727,43 @@ export default {
         return "未接入";
       }
       return connected > 0 ? `${connected} 在线` : "全部离线";
+    },
+    voiceInterruptScopeText() {
+      const scopeMap = {
+        global: "全局默认",
+        device: "设备维度",
+        session: "当前会话",
+      };
+      return scopeMap[this.voiceInterruptState.scope] || "未查询";
+    },
+    voiceInterruptSourceText() {
+      const sourceMap = {
+        "runtime-default": "运行时默认值",
+        connection: "在线连接",
+        persisted: "设备持久化",
+      };
+      return sourceMap[this.voiceInterruptState.source] || "未查询";
+    },
+    voiceInterruptTargetText() {
+      if (this.voiceInterruptState.deviceId) {
+        return this.voiceInterruptState.deviceId;
+      }
+      if (this.voiceInterruptState.sessionId) {
+        return this.voiceInterruptState.sessionId;
+      }
+      return "全局";
+    },
+    voiceInterruptUpdateText() {
+      if (this.voiceInterruptState.scope === "global") {
+        return `更新 ${this.voiceInterruptState.updatedConnections || 0}，跳过 ${this.voiceInterruptState.skippedConnections || 0}`;
+      }
+      if (this.voiceInterruptState.persisted) {
+        return "已写入设备持久化策略";
+      }
+      if (this.voiceInterruptState.sessionId || this.voiceInterruptState.deviceId) {
+        return "已定位到目标连接";
+      }
+      return "暂无变更";
     },
     bridgeOptions() {
       const list = Array.isArray(this.inventory.bridges) ? this.inventory.bridges : [];
@@ -613,11 +853,17 @@ export default {
       this.debugMessages = [];
       this.refreshSetupGuide();
       this.syncDraftInventory();
+      this.refreshVoiceInterruptPanel();
     },
     resetDraft() {
       this.draft = createEmptyChannel();
       this.inventory = createEmptyInventory();
       this.setupGuide = createEmptySetupGuide();
+      this.voiceInterruptState = createEmptyVoiceInterruptState();
+      this.connections = [];
+      this.voiceInterruptActionKey = "";
+      this.manualVoiceInterruptDeviceId = "";
+      this.manualVoiceInterruptPersist = true;
       this.debugForm = createEmptyDebugForm();
       this.debugMessages = [];
       this.advancedPanels = [];
@@ -722,6 +968,142 @@ export default {
         };
       });
     },
+    refreshVoiceInterruptPanel() {
+      if (!this.draft.id) {
+        this.voiceInterruptState = createEmptyVoiceInterruptState();
+        this.connections = [];
+        return;
+      }
+      this.loadVoiceInterruptState();
+      this.loadConnections();
+    },
+    loadConnections() {
+      if (!this.draft.id) {
+        this.connections = [];
+        return;
+      }
+      this.connectionsLoading = true;
+      Api.openclaw.getConnections(this.draft.id, ({ data }) => {
+        this.connectionsLoading = false;
+        if (data.code === 0) {
+          this.connections = Array.isArray(data.data) ? data.data : [];
+          return;
+        }
+        this.connections = [];
+        this.$message.error(data.msg || "获取在线设备失败");
+      }, ({ data }) => {
+        this.connectionsLoading = false;
+        this.connections = [];
+        this.$message.error((data && data.msg) || "获取在线设备失败");
+      });
+    },
+    loadVoiceInterruptState(params = {}, actionKey = "") {
+      if (!this.draft.id) {
+        this.voiceInterruptState = createEmptyVoiceInterruptState();
+        return;
+      }
+      if (actionKey) {
+        this.voiceInterruptActionKey = actionKey;
+      } else {
+        this.voiceInterruptLoading = true;
+      }
+      Api.openclaw.getVoiceInterrupt(this.draft.id, params, ({ data }) => {
+        this.voiceInterruptLoading = false;
+        if (actionKey) {
+          this.voiceInterruptActionKey = "";
+        }
+        if (data.code === 0) {
+          this.voiceInterruptState = data.data || createEmptyVoiceInterruptState();
+          return;
+        }
+        this.$message.error(data.msg || "获取语音打断状态失败");
+      }, ({ data }) => {
+        this.voiceInterruptLoading = false;
+        if (actionKey) {
+          this.voiceInterruptActionKey = "";
+        }
+        this.$message.error((data && data.msg) || "获取语音打断状态失败");
+      });
+    },
+    submitVoiceInterrupt(payload, actionKey, successMessage) {
+      if (!this.draft.id) {
+        this.$message.warning("请先保存并选择一个 Channel");
+        return;
+      }
+      this.voiceInterruptActionKey = actionKey;
+      Api.openclaw.setVoiceInterrupt(this.draft.id, payload, ({ data }) => {
+        this.voiceInterruptActionKey = "";
+        if (data.code === 0) {
+          this.voiceInterruptState = data.data || createEmptyVoiceInterruptState();
+          this.loadConnections();
+          this.$message.success(successMessage);
+          return;
+        }
+        this.$message.error(data.msg || "设置语音打断失败");
+      }, ({ data }) => {
+        this.voiceInterruptActionKey = "";
+        this.$message.error((data && data.msg) || "设置语音打断失败");
+      });
+    },
+    setGlobalVoiceInterrupt(enabled) {
+      this.submitVoiceInterrupt(
+        { enabled },
+        enabled ? "global-on" : "global-off",
+        enabled ? "已开启全局语音打断" : "已关闭全局语音打断"
+      );
+    },
+    setConnectionVoiceInterrupt(connection, enabled, persist) {
+      if (!connection || !connection.sessionId) {
+        this.$message.warning("当前连接信息不完整");
+        return;
+      }
+      if (persist && !connection.deviceId) {
+        this.$message.warning("当前连接缺少 deviceId，无法写入设备维度策略");
+        return;
+      }
+      const actionKey = persist
+        ? `${enabled ? "persist-on" : "persist-off"}:${connection.deviceId}`
+        : `${enabled ? "session-on" : "session-off"}:${connection.sessionId}`;
+      const payload = persist ? {
+        enabled,
+        deviceId: connection.deviceId,
+        persist: true,
+      } : {
+        enabled,
+        sessionId: connection.sessionId,
+      };
+      this.submitVoiceInterrupt(
+        payload,
+        actionKey,
+        persist
+          ? `已${enabled ? "开启" : "关闭"}设备维度语音打断`
+          : `已${enabled ? "开启" : "关闭"}当前连接语音打断`
+      );
+    },
+    inspectManualVoiceInterrupt() {
+      if (!this.manualVoiceInterruptDeviceId) {
+        this.$message.warning("请先输入 deviceId");
+        return;
+      }
+      this.loadVoiceInterruptState({ deviceId: this.manualVoiceInterruptDeviceId }, "inspect-device");
+    },
+    applyManualVoiceInterrupt(enabled) {
+      if (!this.manualVoiceInterruptDeviceId) {
+        this.$message.warning("请先输入 deviceId");
+        return;
+      }
+      this.submitVoiceInterrupt(
+        {
+          enabled,
+          deviceId: this.manualVoiceInterruptDeviceId,
+          persist: this.manualVoiceInterruptPersist,
+        },
+        enabled ? "device-on" : "device-off",
+        this.manualVoiceInterruptPersist
+          ? `已${enabled ? "开启" : "关闭"}设备维度语音打断`
+          : `已${enabled ? "开启" : "关闭"}当前设备在线连接语音打断`
+      );
+    },
     applyDebugDefaults() {
       const runtimeAccounts = Array.isArray(this.inventory.runtimeAccounts) ? this.inventory.runtimeAccounts : [];
       if (!runtimeAccounts.length) {
@@ -801,6 +1183,20 @@ export default {
         value,
         this.debugForm.agentName || value
       );
+    },
+    findOptionLabel(list, value, fallback = "") {
+      const matched = (Array.isArray(list) ? list : []).find((item) => item.value === value);
+      return matched ? matched.label : fallback;
+    },
+    formatConnectionTime(timestamp) {
+      if (timestamp === undefined || timestamp === null || timestamp === "") {
+        return "-";
+      }
+      const numeric = Number(timestamp);
+      if (Number.isNaN(numeric)) {
+        return String(timestamp);
+      }
+      return new Date(numeric * 1000).toLocaleString();
     },
     createDebugSession() {
       this.debugForm.debugSessionId = createDebugSessionId();
@@ -1357,6 +1753,92 @@ export default {
   word-break: break-word;
 }
 
+.interrupt-shell {
+  margin-top: 18px;
+}
+
+.interrupt-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.interrupt-summary-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f6f9ff;
+  border: 1px solid #dde6fb;
+}
+
+.interrupt-summary-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7a86a0;
+}
+
+.interrupt-summary-value {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #24304a;
+  word-break: break-word;
+}
+
+.interrupt-control-block {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: #f8faff;
+}
+
+.interrupt-manual-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.interrupt-device-input {
+  width: 320px;
+}
+
+.compact-header {
+  margin-bottom: 12px;
+}
+
+.connection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.connection-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f6f9ff;
+  border: 1px solid #dde6fb;
+}
+
+.connection-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .console-card {
   margin-top: 24px;
 }
@@ -1508,6 +1990,7 @@ export default {
 @media (max-width: 1200px) {
   .surface-grid,
   .inventory-grid,
+  .interrupt-summary-grid,
   .command-meta,
   .debug-toolbar,
   .debug-chat-shell {
@@ -1523,7 +2006,8 @@ export default {
   }
 
   .debug-session-bar,
-  .debug-composer-actions {
+  .debug-composer-actions,
+  .interrupt-control-block {
     flex-direction: column;
     align-items: stretch;
   }

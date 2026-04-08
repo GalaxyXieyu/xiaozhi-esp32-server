@@ -230,6 +230,7 @@ class ConnectionHandler:
             )
 
             self.device_id = self.headers.get("device-id", None)
+            self._apply_runtime_voice_interrupt_override()
 
             # 认证通过,继续处理
             self.websocket = ws
@@ -706,6 +707,10 @@ class ConnectionHandler:
             self.config["voiceprint"] = private_config["voiceprint"]
         if private_config.get("summaryMemory", None) is not None:
             self.config["summaryMemory"] = private_config["summaryMemory"]
+        if private_config.get("enable_voice_interrupt", None) is not None:
+            self.config["enable_voice_interrupt"] = bool(
+                private_config["enable_voice_interrupt"]
+            )
         if private_config.get("device_max_output_size", None) is not None:
             self.max_output_size = int(private_config["device_max_output_size"])
         if private_config.get("chat_history_conf", None) is not None:
@@ -744,6 +749,18 @@ class ConnectionHandler:
             self.intent = modules["intent"]
         if modules.get("memory", None) is not None:
             self.memory = modules["memory"]
+
+    def _apply_runtime_voice_interrupt_override(self) -> None:
+        store = getattr(self.server, "voice_interrupt_store", None)
+        if store is None:
+            return
+        enabled = store.get_device_voice_interrupt(self.device_id)
+        if enabled is None:
+            return
+        self.config["enable_voice_interrupt"] = enabled
+        self.logger.bind(tag=TAG).info(
+            f"应用设备级语音打断配置: device={self.device_id}, enabled={enabled}"
+        )
 
     def _initialize_memory(self):
         if self.memory is None:

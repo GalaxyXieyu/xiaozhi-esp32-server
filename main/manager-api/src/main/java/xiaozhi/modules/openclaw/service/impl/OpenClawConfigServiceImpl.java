@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
@@ -30,8 +31,11 @@ import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.OptionItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptRequestDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
 import xiaozhi.modules.sys.dao.SysParamsDao;
 import xiaozhi.modules.sys.entity.SysParamsEntity;
@@ -222,16 +226,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
 
     @Override
     public OpenClawClearSessionResponseDTO clearSession(String channelId, OpenClawClearSessionRequestDTO request) {
-        OpenClawChannelDTO channel = loadChannels().stream()
-                .filter(item -> StringUtils.equals(item.getId(), channelId))
-                .findFirst()
-                .orElse(null);
-        if (channel == null) {
-            throw new IllegalStateException("未找到对应的 OpenClaw channel");
-        }
-        if (Boolean.FALSE.equals(channel.getEnabled())) {
-            throw new IllegalStateException("当前 OpenClaw channel 已禁用");
-        }
+        OpenClawChannelDTO channel = resolveEnabledChannel(channelId);
 
         String sourceUrl = buildChannelApiUrl(channel, "/clear-session");
         Map<String, Object> requestBody = new LinkedHashMap<>();
@@ -257,6 +252,59 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         response.setPeerId(StringUtils.defaultIfBlank(firstString(result, new String[]{"peerId"}), request.getPeerId()));
         response.setRawResult(result);
         return response;
+    }
+
+    @Override
+    public List<OpenClawConnectionDTO> listConnections(String channelId) {
+        OpenClawChannelDTO channel = resolveEnabledChannel(channelId);
+        Map<String, Object> payload = requestChannelApi(channel, "/connections", HttpMethod.GET, null);
+        Map<String, Object> root = unwrapData(payload);
+        Object rawConnections = root.get("connections");
+        if (!(rawConnections instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+
+        List<OpenClawConnectionDTO> connections = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Map<String, Object> raw = castMap(map);
+            OpenClawConnectionDTO connection = new OpenClawConnectionDTO();
+            connection.setSessionId(firstString(raw, new String[]{"sessionId"}));
+            connection.setDeviceId(firstString(raw, new String[]{"deviceId"}));
+            connection.setClientIp(firstString(raw, new String[]{"clientIp"}));
+            connection.setRegisteredAt(firstDouble(raw, new String[]{"registeredAt"}));
+            connection.setIsLatest(Boolean.TRUE.equals(firstBoolean(raw, new String[]{"isLatest"})));
+            Boolean voiceInterruptEnabled = firstBoolean(raw, new String[]{"voiceInterruptEnabled"});
+            connection.setVoiceInterruptEnabled(voiceInterruptEnabled == null ? Boolean.TRUE : voiceInterruptEnabled);
+            connections.add(connection);
+        }
+        return connections;
+    }
+
+    @Override
+    public OpenClawVoiceInterruptResponseDTO getVoiceInterrupt(String channelId, OpenClawVoiceInterruptRequestDTO request) {
+        OpenClawChannelDTO channel = resolveEnabledChannel(channelId);
+        String sourceUrl = buildChannelApiUrl(channel, "/voice-interrupt", buildVoiceInterruptQuery(request));
+        Map<String, Object> payload = requestChannelApiByUrl(channel, sourceUrl, HttpMethod.GET, null);
+        return toVoiceInterruptResponse(channelId, sourceUrl, unwrapData(payload));
+    }
+
+    @Override
+    public OpenClawVoiceInterruptResponseDTO setVoiceInterrupt(String channelId, OpenClawVoiceInterruptRequestDTO request) {
+        OpenClawChannelDTO channel = resolveEnabledChannel(channelId);
+        String sourceUrl = buildChannelApiUrl(channel, "/voice-interrupt");
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("enabled", request.getEnabled());
+        requestBody.put("sessionId", StringUtils.trimToNull(request.getSessionId()));
+        requestBody.put("deviceId", StringUtils.trimToNull(request.getDeviceId()));
+        requestBody.put("peerId", StringUtils.trimToNull(request.getPeerId()));
+        requestBody.put("allowLatest", Boolean.TRUE.equals(request.getAllowLatest()));
+        requestBody.put("persist", Boolean.TRUE.equals(request.getPersist()));
+
+        Map<String, Object> payload = requestChannelApi(channel, "/voice-interrupt", HttpMethod.POST, requestBody);
+        return toVoiceInterruptResponse(channelId, sourceUrl, unwrapData(payload));
     }
 
     @Override
@@ -392,6 +440,20 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return normalized;
     }
 
+    private OpenClawChannelDTO resolveEnabledChannel(String channelId) {
+        OpenClawChannelDTO channel = loadChannels().stream()
+                .filter(item -> StringUtils.equals(item.getId(), channelId))
+                .findFirst()
+                .orElse(null);
+        if (channel == null) {
+            throw new IllegalStateException("未找到对应的 OpenClaw channel");
+        }
+        if (Boolean.FALSE.equals(channel.getEnabled())) {
+            throw new IllegalStateException("当前 OpenClaw channel 已禁用");
+        }
+        return channel;
+    }
+
     private void persistParam(String paramCode, String paramValue, String valueType, String remark) {
         int updated = sysParamsService.updateValueByCode(paramCode, paramValue);
         if (updated > 0) {
@@ -425,6 +487,19 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
 
     private String buildChannelApiUrl(OpenClawChannelDTO channel, String path) {
         return trimTrailingSlash(channel.getBaseUrl()) + normalizeInventoryPath(path);
+    }
+
+    private String buildChannelApiUrl(OpenClawChannelDTO channel, String path, Map<String, String> queryParams) {
+        String baseUrl = buildChannelApiUrl(channel, path);
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl);
+        if (queryParams != null) {
+            for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+                if (StringUtils.isNotBlank(entry.getValue())) {
+                    builder.queryParam(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        return builder.build(true).toUriString();
     }
 
     private String buildDefaultBaseUrl(String serverOrigin) {
@@ -473,6 +548,10 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
 
     private Map<String, Object> requestChannelApi(OpenClawChannelDTO channel, String path, HttpMethod method, Object body) {
         String requestUrl = buildChannelApiUrl(channel, path);
+        return requestChannelApiByUrl(channel, requestUrl, method, body);
+    }
+
+    private Map<String, Object> requestChannelApiByUrl(OpenClawChannelDTO channel, String requestUrl, HttpMethod method, Object body) {
         HttpEntity<?> requestEntity = body == null
                 ? new HttpEntity<>(buildChannelHeaders(channel))
                 : new HttpEntity<>(body, buildChannelHeaders(channel));
@@ -494,6 +573,39 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             ));
         }
         return payload;
+    }
+
+    private Map<String, String> buildVoiceInterruptQuery(OpenClawVoiceInterruptRequestDTO request) {
+        Map<String, String> query = new LinkedHashMap<>();
+        if (request == null) {
+            return query;
+        }
+        query.put("sessionId", StringUtils.trimToNull(request.getSessionId()));
+        query.put("deviceId", StringUtils.trimToNull(request.getDeviceId()));
+        query.put("peerId", StringUtils.trimToNull(request.getPeerId()));
+        if (Boolean.TRUE.equals(request.getAllowLatest())) {
+            query.put("allowLatest", "true");
+        }
+        return query;
+    }
+
+    private OpenClawVoiceInterruptResponseDTO toVoiceInterruptResponse(String channelId, String sourceUrl, Map<String, Object> raw) {
+        OpenClawVoiceInterruptResponseDTO response = new OpenClawVoiceInterruptResponseDTO();
+        response.setChannelId(channelId);
+        response.setSourceUrl(sourceUrl);
+        response.setEnabled(firstBoolean(raw, new String[]{"enabled"}));
+        response.setScope(firstString(raw, new String[]{"scope"}));
+        response.setSource(firstString(raw, new String[]{"source"}));
+        response.setSessionId(firstString(raw, new String[]{"sessionId"}));
+        response.setDeviceId(firstString(raw, new String[]{"deviceId"}));
+        Integer updatedConnections = firstInteger(raw, new String[]{"updatedConnections"});
+        response.setUpdatedConnections(updatedConnections == null ? 0 : updatedConnections);
+        Integer skippedConnections = firstInteger(raw, new String[]{"skippedConnections"});
+        response.setSkippedConnections(skippedConnections == null ? 0 : skippedConnections);
+        response.setPersisted(Boolean.TRUE.equals(firstBoolean(raw, new String[]{"persisted"})));
+        response.setOnline(firstBoolean(raw, new String[]{"online"}));
+        response.setRawResult(new LinkedHashMap<>(raw));
+        return response;
     }
 
     private String trimTrailingSlash(String value) {
@@ -658,6 +770,46 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                 }
                 if ("false".equalsIgnoreCase(text) || "0".equals(text)) {
                     return Boolean.FALSE;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Integer firstInteger(Map<String, Object> raw, String[] keys) {
+        if (raw == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = raw.get(key);
+            if (value instanceof Number number) {
+                return number.intValue();
+            }
+            if (value instanceof String text && StringUtils.isNotBlank(text)) {
+                try {
+                    return Integer.parseInt(text);
+                } catch (NumberFormatException ignore) {
+                    // ignore invalid integer
+                }
+            }
+        }
+        return null;
+    }
+
+    private Double firstDouble(Map<String, Object> raw, String[] keys) {
+        if (raw == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = raw.get(key);
+            if (value instanceof Number number) {
+                return number.doubleValue();
+            }
+            if (value instanceof String text && StringUtils.isNotBlank(text)) {
+                try {
+                    return Double.parseDouble(text);
+                } catch (NumberFormatException ignore) {
+                    // ignore invalid number
                 }
             }
         }

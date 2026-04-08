@@ -134,14 +134,35 @@ class XiaozhiActiveConnectionRegistry:
                         "clientIp": getattr(conn, "client_ip", None),
                         "registeredAt": self._registered_at.get(session_id),
                         "isLatest": session_id == self._latest_session_id,
+                        "voiceInterruptEnabled": bool(
+                            getattr(conn, "config", {}).get(
+                                "enable_voice_interrupt", True
+                            )
+                        ),
                     }
                 )
 
         items.sort(key=lambda item: item.get("registeredAt") or 0, reverse=True)
         return items
 
-    async def set_voice_interrupt_enabled(self, enabled: bool) -> dict[str, Any]:
+    def _apply_voice_interrupt(
+        self, conn: Any, enabled: bool, *, update_common_config: bool
+    ) -> None:
+        conn.config["enable_voice_interrupt"] = enabled
+        common_config = getattr(conn, "common_config", None)
+        if update_common_config and isinstance(common_config, dict):
+            common_config["enable_voice_interrupt"] = enabled
+
+    async def set_voice_interrupt_enabled(
+        self, enabled: bool, *, skip_device_ids: set[str] | None = None
+    ) -> dict[str, Any]:
         updated_count = 0
+        skipped_count = 0
+        normalized_skip_ids = {
+            (device_id or "").strip()
+            for device_id in (skip_device_ids or set())
+            if device_id
+        }
 
         async with self._lock:
             for session_id, conn in list(self._by_session_id.items()):
@@ -153,16 +174,83 @@ class XiaozhiActiveConnectionRegistry:
                         self._by_device_id.pop(device_id, None)
                     continue
 
-                conn.config["enable_voice_interrupt"] = enabled
-                common_config = getattr(conn, "common_config", None)
-                if isinstance(common_config, dict):
-                    common_config["enable_voice_interrupt"] = enabled
+                device_id = (getattr(conn, "device_id", "") or "").strip()
+                if device_id and device_id in normalized_skip_ids:
+                    skipped_count += 1
+                    continue
+
+                self._apply_voice_interrupt(
+                    conn, enabled, update_common_config=True
+                )
                 updated_count += 1
 
         self.logger.bind(tag=TAG).info(
-            f"批量更新语音打断开关: enabled={enabled}, updated={updated_count}"
+            f"批量更新语音打断开关: enabled={enabled}, updated={updated_count}, skipped={skipped_count}"
         )
-        return {"enabled": enabled, "updatedCount": updated_count}
+        return {
+            "enabled": enabled,
+            "updatedCount": updated_count,
+            "skippedCount": skipped_count,
+        }
+
+    async def set_voice_interrupt_for_connection(
+        self,
+        enabled: bool,
+        *,
+        session_id: str | None = None,
+        device_id: str | None = None,
+        peer_id: str | None = None,
+        allow_latest: bool = False,
+    ) -> dict[str, Any]:
+        conn = await self._resolve_connection(
+            session_id=session_id,
+            device_id=device_id,
+            peer_id=peer_id,
+            allow_latest=allow_latest,
+        )
+        if conn is None:
+            return {
+                "enabled": enabled,
+                "updatedCount": 0,
+                "sessionId": session_id,
+                "deviceId": device_id,
+            }
+
+        self._apply_voice_interrupt(conn, enabled, update_common_config=False)
+        resolved_session_id = getattr(conn, "session_id", None)
+        resolved_device_id = getattr(conn, "device_id", None)
+        self.logger.bind(tag=TAG).info(
+            f"定向更新语音打断开关: enabled={enabled}, session={resolved_session_id or ''}, device={resolved_device_id or ''}"
+        )
+        return {
+            "enabled": enabled,
+            "updatedCount": 1,
+            "sessionId": resolved_session_id,
+            "deviceId": resolved_device_id,
+        }
+
+    async def get_voice_interrupt_state(
+        self,
+        *,
+        session_id: str | None = None,
+        device_id: str | None = None,
+        peer_id: str | None = None,
+        allow_latest: bool = False,
+    ) -> dict[str, Any] | None:
+        conn = await self._resolve_connection(
+            session_id=session_id,
+            device_id=device_id,
+            peer_id=peer_id,
+            allow_latest=allow_latest,
+        )
+        if conn is None:
+            return None
+
+        return {
+            "enabled": bool(conn.config.get("enable_voice_interrupt", True)),
+            "sessionId": getattr(conn, "session_id", None),
+            "deviceId": getattr(conn, "device_id", None),
+        }
 
     async def _resolve_connection(
         self,

@@ -40,10 +40,17 @@ TAG = __name__
 
 
 class WebSocketServer:
-    def __init__(self, config: dict, openclaw_hub=None, connection_registry=None):
+    def __init__(
+        self,
+        config: dict,
+        openclaw_hub=None,
+        connection_registry=None,
+        voice_interrupt_store=None,
+    ):
         self.config = config
         self.openclaw_hub = openclaw_hub
         self.connection_registry = connection_registry
+        self.voice_interrupt_store = voice_interrupt_store
         self.logger = setup_logging()
         self.config_lock = asyncio.Lock()
         modules = initialize_modules(

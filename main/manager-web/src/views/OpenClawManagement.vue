@@ -265,8 +265,16 @@
               </div>
             </div>
             <p class="section-description">
-              这里只控制 server-side speech interrupt，也就是设备播报时是否允许被人声打断；不是整机唤醒词、不是常开收音总开关。
+              这里只控制设备播报时是否允许被人声打断。它作用于当前 runtime 下的所有 ESP32 在线连接，不区分原生 Agent 还是 OpenClaw Agent；但它不是整机唤醒词，也不是常开收音总开关。
             </p>
+            <el-alert
+              v-if="draft.id"
+              title="这块控制的是 runtime 连接级别的播报打断开关，同一台服务器上的原生模式和 OpenClaw 模式设备都会生效。"
+              type="success"
+              :closable="false"
+              show-icon
+              class="top-alert"
+            />
             <el-alert
               v-if="!draft.id"
               title="请先保存并选择一个 Channel，再管理运行时语音打断。"
@@ -324,7 +332,7 @@
               <div class="interrupt-control-block">
                 <div>
                   <div class="inventory-title">按设备 ID 控制</div>
-                  <div class="command-hint">适合后台直接指定某台 ESP32。勾选“持久化”后，新连接建立时也会沿用该设备配置。</div>
+                  <div class="command-hint">适合后台直接指定某台 ESP32。勾选“持久化”后，新连接建立时也会沿用该设备配置，不区分它后面跑的是原生还是 OpenClaw。</div>
                 </div>
                 <div class="interrupt-manual-row">
                   <el-input

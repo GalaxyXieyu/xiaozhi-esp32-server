@@ -351,6 +351,7 @@ export default {
     visible(val) {
       this.dialogVisible = val;
       if (val) {
+        this.routePrefillApplied = false;
         this.loadDebugHistory();
         this.applyDebugDefaults();
       }
@@ -373,6 +374,15 @@ export default {
     inventory: {
       deep: true,
       handler() {
+        if (this.dialogVisible) {
+          this.applyDebugDefaults();
+        }
+      },
+    },
+    routePrefill: {
+      deep: true,
+      handler() {
+        this.routePrefillApplied = false;
         if (this.dialogVisible) {
           this.applyDebugDefaults();
         }

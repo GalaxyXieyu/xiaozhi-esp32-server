@@ -86,14 +86,14 @@ jobs:
           kubectl -n "$K8S_NAMESPACE" set image deployment/"$K8S_DEPLOYMENT" "$K8S_CONTAINER"="$IMAGE_TAG"
           kubectl -n "$K8S_NAMESPACE" patch deployment/"$K8S_DEPLOYMENT" --type=strategic -p "$(cat <<EOF
           {
-            \"spec\": {
-              \"template\": {
-                \"spec\": {
-                  \"containers\": [
+            "spec": {
+              "template": {
+                "spec": {
+                  "containers": [
                     {
-                      \"name\": \"${K8S_CONTAINER}\",
-                      \"command\": [\"/start.sh\"],
-                      \"args\": []
+                      "name": "${K8S_CONTAINER}",
+                      "command": ["/start.sh"],
+                      "args": []
                     }
                   ]
                 }

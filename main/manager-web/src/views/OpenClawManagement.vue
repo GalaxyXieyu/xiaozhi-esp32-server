@@ -23,570 +23,561 @@
           element-loading-spinner="el-icon-loading"
           element-loading-background="rgba(255, 255, 255, 0.72)"
         >
-          <div class="hero-card">
-            <div class="hero-main">
-              <div class="hero-label">Unified Runtime Console</div>
-              <h3 class="hero-title">优先控制设备播报打断，需要时再管理 Channel 和在线调试</h3>
-              <p class="hero-description">
-                这页现在承载设备运行时控制。语音打断是通用设备能力，适用于同一 runtime 下的原生和 OpenClaw 设备；下面的 Channel、Inventory 和在线调试则是 OpenClaw 辅助能力。
+          <div class="overview-strip">
+            <div class="overview-intro">
+              <div class="section-eyebrow">Runtime Workbench</div>
+              <h3 class="overview-title">先控设备运行时，再做 Channel 接入和在线调试</h3>
+              <p class="overview-description">
+                运行时语音打断是当前页的主任务。Channel、Inventory 和在线调试保留为同一工作台里的辅助分区，避免继续堆成长页。
               </p>
             </div>
-            <div class="hero-meta">
-              <div class="meta-pill">
-                <span class="meta-key">已配置 Channel</span>
-                <span class="meta-value">{{ channels.length }}</span>
+            <div class="overview-stats">
+              <div class="overview-stat">
+                <span class="overview-stat-label">当前 Channel</span>
+                <strong class="overview-stat-value">{{ draft.name || "未选择" }}</strong>
+                <span class="overview-stat-note">{{ draft.id || "保存后生成 account id" }}</span>
               </div>
-              <div class="meta-pill">
-                <span class="meta-key">命令状态</span>
-                <span class="meta-value">{{ commandStatusText }}</span>
+              <div class="overview-stat">
+                <span class="overview-stat-label">安装命令</span>
+                <strong class="overview-stat-value">{{ commandStatusText }}</strong>
+                <span class="overview-stat-note">默认 Agent：{{ setupGuide.defaultAgentId || "main" }}</span>
               </div>
-              <div class="meta-pill">
-                <span class="meta-key">Inventory 状态</span>
-                <span class="meta-value">{{ inventoryStatusText }}</span>
+              <div class="overview-stat">
+                <span class="overview-stat-label">Inventory</span>
+                <strong class="overview-stat-value">{{ inventoryStatusText }}</strong>
+                <span class="overview-stat-note">{{ bridgeStatusText }}</span>
+              </div>
+              <div class="overview-stat">
+                <span class="overview-stat-label">在线设备</span>
+                <strong class="overview-stat-value">{{ connections.length }}</strong>
+                <span class="overview-stat-note">{{ voiceInterruptScopeText }}</span>
               </div>
             </div>
           </div>
 
-          <div class="surface-grid">
-            <el-card class="surface-card" shadow="never">
-              <div class="section-header">
-                <div>
-                  <div class="section-eyebrow">Channel Registry</div>
-                  <h3>已绑定 Channel</h3>
-                </div>
-                <span class="tool-count">{{ channels.length }} 个</span>
-              </div>
-              <p class="section-description">
-                智能体表单只会消费这里的 channel。保存后，每个 channel 都有自己的 account id 和接入命令。
-              </p>
-              <div v-if="channels.length" class="channel-list">
-                <button
-                  v-for="item in channels"
-                  :key="item.id"
-                  class="channel-item"
-                  :class="{ active: item.id === draft.id }"
-                  @click="selectChannel(item)"
-                >
-                  <div class="channel-item-main">
-                    <span class="channel-name">{{ item.name || "未命名 channel" }}</span>
-                    <el-tag size="mini" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? '启用' : '停用' }}</el-tag>
-                  </div>
-                  <span class="channel-url">Account: {{ item.id }}</span>
-                </button>
-              </div>
-              <el-empty v-else description="尚未绑定 OpenClaw channel" :image-size="88" />
-            </el-card>
-
-            <el-card class="surface-card" shadow="never">
-              <div class="section-header">
-                <div>
-                  <div class="section-eyebrow">Channel Editor</div>
-                  <h3>{{ draft.id ? "编辑 Channel" : "新增 Channel" }}</h3>
-                </div>
-                <div class="inline-actions">
-                  <el-button size="small" @click="resetDraft">清空</el-button>
-                  <el-button size="small" type="danger" plain :disabled="!draft.id" @click="removeDraftChannel">删除</el-button>
-                </div>
-              </div>
-              <p class="section-description">
-                主流程只需要填写名称。保存后系统会生成 account id、安装命令和后台接入参数。
-              </p>
-              <div class="step-list">
-                <div class="step-item">
-                  <span class="step-index">1</span>
-                  <span>填写 Channel 名称并保存</span>
-                </div>
-                <div class="step-item">
-                  <span class="step-index">2</span>
-                  <span>复制命令到 OpenClaw 项目目录执行</span>
-                </div>
-                <div class="step-item">
-                  <span class="step-index">3</span>
-                  <span>执行完成后回来点击“测试并拉取 Inventory”</span>
-                </div>
-              </div>
-              <el-form label-position="top" class="channel-form">
-                <el-form-item label="Channel 名称">
-                  <el-input v-model="draft.name" maxlength="64" placeholder="例如：生产 Runtime" />
-                </el-form-item>
-                <el-form-item label="备注">
-                  <el-input v-model="draft.remark" type="textarea" :rows="3" resize="none" maxlength="200" placeholder="可选，用于记录用途或环境说明" />
-                </el-form-item>
-                <div class="channel-toggle">
-                  <span>启用该 channel</span>
-                  <el-switch v-model="draft.enabled" />
-                </div>
-                <div class="channel-actions">
-                  <el-button type="primary" @click="saveChannels" :loading="saving">保存 Channel 配置</el-button>
-                  <el-button @click="copyInstallCommand" :disabled="!setupGuide.installCommand">复制安装命令</el-button>
-                  <el-button @click="syncDraftInventory" :loading="inventoryLoading" :disabled="!draft.id">测试并拉取 Inventory</el-button>
-                </div>
-              </el-form>
-
-              <div class="command-panel" v-loading="guideLoading">
-                <div class="command-header">
+          <div class="workspace-shell">
+            <aside class="workspace-sidebar">
+              <el-card class="surface-card sidebar-card registry-card" shadow="never">
+                <div class="section-header">
                   <div>
-                    <div class="section-eyebrow">Setup Command</div>
-                    <h4 class="command-title">可复制的 OpenClaw 安装命令</h4>
+                    <div class="section-eyebrow">Channel Registry</div>
+                    <h3>已绑定 Channel</h3>
                   </div>
-                  <el-tag size="mini" :type="setupGuide.installCommand ? 'success' : 'info'">{{ commandStatusText }}</el-tag>
+                  <span class="tool-count">{{ channels.length }} 个</span>
                 </div>
-                <div class="command-meta">
-                  <div class="meta-line">
-                    <span class="meta-line-key">Account ID</span>
-                    <span class="meta-line-value">{{ setupGuide.channelId || '保存后自动生成' }}</span>
-                  </div>
-                  <div class="meta-line">
-                    <span class="meta-line-key">默认 Agent</span>
-                    <span class="meta-line-value">{{ setupGuide.defaultAgentId || 'main' }}</span>
-                  </div>
+                <p class="section-description sidebar-description">
+                  智能体绑定页只消费这里的 channel。左侧只负责选上下文，右侧负责编辑与控制。
+                </p>
+                <div class="sidebar-toolbar">
+                  <el-button size="small" type="primary" plain @click="resetDraft">新建</el-button>
+                  <el-button size="small" @click="loadChannels" :loading="loading">刷新列表</el-button>
                 </div>
-                <el-alert
-                  v-if="!setupGuide.accessTokenConfigured && draft.id"
-                  title="系统未检测到 server secret，当前无法生成可执行命令，请先补齐后台 server.secret。"
-                  type="warning"
-                  :closable="false"
-                  show-icon
-                  class="top-alert"
-                />
-                <el-input
-                  type="textarea"
-                  :rows="6"
-                  resize="none"
-                  readonly
-                  class="command-textarea"
-                  :value="setupGuide.installCommand || '先保存 Channel，系统会在这里生成可直接复制的 npx 命令。'"
-                />
-                <div class="command-hint">
-                  命令示例用法：进入 OpenClaw 项目目录后执行即可，例如 `cd ~/openclaw && ...`。命令里已经带好 server、admin key、account 和 channel 名称。
-                </div>
-              </div>
-
-              <el-collapse v-model="advancedPanels" class="advanced-panel">
-                <el-collapse-item name="advanced" title="高级配置（通常不用改）">
-                  <el-form label-position="top" class="channel-form advanced-form">
-                    <el-form-item label="管理接口基础地址">
-                      <el-input v-model="draft.baseUrl" placeholder="默认自动生成，例如：https://example.com/admin/openclaw" />
-                    </el-form-item>
-                    <el-form-item label="Inventory 路径">
-                      <el-input v-model="draft.inventoryPath" placeholder="/inventory" />
-                    </el-form-item>
-                    <el-form-item label="Access Token">
-                      <el-input v-model="draft.accessToken" show-password placeholder="默认自动注入 server secret" />
-                    </el-form-item>
-                  </el-form>
-                </el-collapse-item>
-              </el-collapse>
-            </el-card>
-          </div>
-
-          <el-card class="surface-card wide-card" shadow="never">
-            <div class="section-header">
-              <div>
-                <div class="section-eyebrow">Inventory</div>
-                <h3>Channel 可选项</h3>
-              </div>
-              <div class="inventory-tags">
-                <el-tag :type="inventory.healthy ? 'success' : 'warning'">{{ inventoryStatusText }}</el-tag>
-                <el-tag size="mini" :type="(inventory.connectedBridgeCount || 0) > 0 ? 'success' : 'info'">{{ bridgeStatusText }}</el-tag>
-              </div>
-            </div>
-            <p class="section-description">
-              这里展示 channel 实际回传的 runtime/account 与 OpenClaw agent 列表。智能体绑定页会直接消费这些下拉项。
-            </p>
-            <el-alert
-              v-if="inventory.errorMessage"
-              :title="inventory.errorMessage"
-              type="warning"
-              :closable="false"
-              show-icon
-              class="top-alert"
-            />
-            <div class="bridge-strip">
-              <div class="inventory-title">Bridge 状态</div>
-              <div v-if="inventory.bridges.length" class="bridge-grid">
-                <div v-for="item in inventory.bridges" :key="item.bridgeId" class="bridge-card">
-                  <div class="bridge-card-head">
-                    <span class="bridge-name">{{ item.name || item.bridgeId }}</span>
-                    <el-tag size="mini" :type="item.connected ? 'success' : 'info'">{{ item.connected ? '在线' : '离线' }}</el-tag>
-                  </div>
-                  <div class="bridge-meta-line">Account: {{ item.account || "-" }}</div>
-                  <div class="bridge-meta-line">Bridge ID: {{ item.bridgeId }}</div>
-                </div>
-              </div>
-              <el-empty v-else description="当前未发现 OpenClaw bridge" :image-size="72" />
-            </div>
-            <div class="inventory-grid">
-              <div class="inventory-block">
-                <div class="inventory-title">Runtime / Account</div>
-                <div v-if="inventory.runtimeAccounts.length" class="inventory-list">
-                  <div v-for="item in inventory.runtimeAccounts" :key="item.value" class="inventory-chip">
-                    {{ item.label }}
-                  </div>
-                </div>
-                <el-empty v-else description="当前未返回 runtime/account 选项" :image-size="80" />
-              </div>
-              <div class="inventory-block">
-                <div class="inventory-title">OpenClaw Agents</div>
-                <div v-if="inventory.agents.length" class="inventory-list">
-                  <div v-for="item in inventory.agents" :key="item.value" class="inventory-chip">
-                    {{ item.label }}
-                  </div>
-                </div>
-                <el-empty v-else description="当前未返回 OpenClaw agent 选项" :image-size="80" />
-              </div>
-            </div>
-            <div class="runtime-list">
-              <div class="runtime-item">
-                <span class="runtime-path">Source URL</span>
-                <span class="runtime-note">{{ inventory.sourceUrl || '尚未测试 inventory 接口' }}</span>
-              </div>
-              <div class="runtime-item">
-                <span class="runtime-path">绑定策略</span>
-                <span class="runtime-note">先绑定 Channel，再让智能体表单按 channel 下拉选择 runtime/account 和 OpenClaw agent。</span>
-              </div>
-            </div>
-          </el-card>
-
-          <el-card class="surface-card wide-card console-card" shadow="never">
-            <div class="section-header">
-              <div>
-                <div class="section-eyebrow">Runtime Voice Interrupt</div>
-                <h3>运行时语音打断</h3>
-              </div>
-              <div class="inventory-tags">
-                <el-tag :type="voiceInterruptState.enabled ? 'success' : 'info'">
-                  {{ voiceInterruptState.enabled ? "当前开启" : "当前关闭" }}
-                </el-tag>
-                <el-tag size="mini" type="info">{{ voiceInterruptScopeText }}</el-tag>
-                <el-button size="small" :loading="voiceInterruptLoading || connectionsLoading" @click="refreshVoiceInterruptPanel">
-                  刷新
-                </el-button>
-              </div>
-            </div>
-            <p class="section-description">
-              这里只控制设备播报时是否允许被人声打断。它作用于当前 runtime 下的所有 ESP32 在线连接，不区分原生 Agent 还是 OpenClaw Agent；但它不是整机唤醒词，也不是常开收音总开关。
-            </p>
-            <el-alert
-              v-if="draft.id"
-              title="这块控制的是 runtime 连接级别的播报打断开关，同一台服务器上的原生模式和 OpenClaw 模式设备都会生效。"
-              type="success"
-              :closable="false"
-              show-icon
-              class="top-alert"
-            />
-            <el-alert
-              v-if="!draft.id"
-              title="请先保存并选择一个 Channel，再管理运行时语音打断。"
-              type="info"
-              :closable="false"
-              show-icon
-              class="top-alert"
-            />
-            <div v-else class="interrupt-shell">
-              <div class="interrupt-summary-grid">
-                <div class="interrupt-summary-card">
-                  <div class="interrupt-summary-label">状态来源</div>
-                  <div class="interrupt-summary-value">{{ voiceInterruptSourceText }}</div>
-                </div>
-                <div class="interrupt-summary-card">
-                  <div class="interrupt-summary-label">作用范围</div>
-                  <div class="interrupt-summary-value">{{ voiceInterruptScopeText }}</div>
-                </div>
-                <div class="interrupt-summary-card">
-                  <div class="interrupt-summary-label">当前定位</div>
-                  <div class="interrupt-summary-value">{{ voiceInterruptTargetText }}</div>
-                </div>
-                <div class="interrupt-summary-card">
-                  <div class="interrupt-summary-label">最近变更</div>
-                  <div class="interrupt-summary-value">{{ voiceInterruptUpdateText }}</div>
-                </div>
-              </div>
-
-              <div class="interrupt-control-block">
-                <div>
-                  <div class="inventory-title">全局默认值</div>
-                  <div class="command-hint">会同步更新当前在线连接，但已持久化到设备维度的机器会被跳过。</div>
-                </div>
-                <div class="inline-actions">
-                  <el-button
-                    size="small"
-                    type="primary"
-                    :loading="voiceInterruptActionKey === 'global-on'"
-                    @click="setGlobalVoiceInterrupt(true)"
-                  >
-                    全局开启
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="warning"
-                    plain
-                    :loading="voiceInterruptActionKey === 'global-off'"
-                    @click="setGlobalVoiceInterrupt(false)"
-                  >
-                    全局关闭
-                  </el-button>
-                </div>
-              </div>
-
-              <div class="interrupt-control-block">
-                <div>
-                  <div class="inventory-title">按设备 ID 控制</div>
-                  <div class="command-hint">适合后台直接指定某台 ESP32。勾选“持久化”后，新连接建立时也会沿用该设备配置，不区分它后面跑的是原生还是 OpenClaw。</div>
-                </div>
-                <div class="interrupt-manual-row">
-                  <el-input
-                    v-model.trim="manualVoiceInterruptDeviceId"
-                    class="interrupt-device-input"
-                    placeholder="输入 deviceId，例如 MAC 或业务设备号"
-                  />
-                  <el-checkbox v-model="manualVoiceInterruptPersist">持久化到设备</el-checkbox>
-                  <el-button
-                    size="small"
-                    :loading="voiceInterruptActionKey === 'inspect-device'"
-                    @click="inspectManualVoiceInterrupt"
-                  >
-                    查询
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="primary"
-                    :loading="voiceInterruptActionKey === 'device-on'"
-                    @click="applyManualVoiceInterrupt(true)"
-                  >
-                    开启
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="warning"
-                    plain
-                    :loading="voiceInterruptActionKey === 'device-off'"
-                    @click="applyManualVoiceInterrupt(false)"
-                  >
-                    关闭
-                  </el-button>
-                </div>
-              </div>
-
-              <div class="bridge-strip">
-                <div class="section-header compact-header">
-                  <div>
-                    <div class="inventory-title">当前在线设备</div>
-                    <div class="command-hint">“当前连接”只影响这次在线会话；“按设备”会写成设备维度策略。</div>
-                  </div>
-                  <el-tag size="mini" :type="connections.length ? 'success' : 'info'">{{ connections.length }} 台在线</el-tag>
-                </div>
-                <div v-if="connections.length" class="connection-grid">
-                  <div v-for="item in connections" :key="item.sessionId" class="connection-card">
-                    <div class="connection-card-head">
-                      <div>
-                        <div class="bridge-name">{{ item.deviceId || item.sessionId }}</div>
-                        <div class="bridge-meta-line">Session: {{ item.sessionId || "-" }}</div>
-                      </div>
-                      <div class="inventory-tags">
-                        <el-tag size="mini" :type="item.voiceInterruptEnabled ? 'success' : 'info'">
-                          {{ item.voiceInterruptEnabled ? "可打断" : "不可打断" }}
-                        </el-tag>
-                        <el-tag v-if="item.isLatest" size="mini" type="warning">Latest</el-tag>
-                      </div>
-                    </div>
-                    <div class="bridge-meta-line">Device ID: {{ item.deviceId || "-" }}</div>
-                    <div class="bridge-meta-line">Client IP: {{ item.clientIp || "-" }}</div>
-                    <div class="bridge-meta-line">连接时间: {{ formatConnectionTime(item.registeredAt) }}</div>
-                    <div class="connection-actions">
-                      <el-button
-                        size="mini"
-                        type="primary"
-                        :loading="voiceInterruptActionKey === `session-on:${item.sessionId}`"
-                        @click="setConnectionVoiceInterrupt(item, true, false)"
-                      >
-                        当前连接开启
-                      </el-button>
-                      <el-button
-                        size="mini"
-                        type="warning"
-                        plain
-                        :loading="voiceInterruptActionKey === `session-off:${item.sessionId}`"
-                        @click="setConnectionVoiceInterrupt(item, false, false)"
-                      >
-                        当前连接关闭
-                      </el-button>
-                      <el-button
-                        size="mini"
-                        plain
-                        :disabled="!item.deviceId"
-                        :loading="voiceInterruptActionKey === `persist-on:${item.deviceId}`"
-                        @click="setConnectionVoiceInterrupt(item, true, true)"
-                      >
-                        按设备开启
-                      </el-button>
-                      <el-button
-                        size="mini"
-                        plain
-                        :disabled="!item.deviceId"
-                        :loading="voiceInterruptActionKey === `persist-off:${item.deviceId}`"
-                        @click="setConnectionVoiceInterrupt(item, false, true)"
-                      >
-                        按设备关闭
-                      </el-button>
-                    </div>
-                  </div>
-                </div>
-                <el-empty v-else description="当前没有在线 ESP32 连接" :image-size="72" />
-              </div>
-            </div>
-          </el-card>
-
-          <el-card class="surface-card wide-card console-card" shadow="never">
-            <div class="section-header">
-              <div>
-                <div class="section-eyebrow">Online Console</div>
-                <h3>OpenClaw 在线调试台</h3>
-              </div>
-              <el-tag :type="canSendDirectChat ? 'success' : 'info'">{{ debugForm.debugSessionId }}</el-tag>
-            </div>
-            <p class="section-description">
-              这里直接走后台到 OpenClaw bridge 的 RPC，不依赖在线设备。适合线上快速验证 agent 选择、回复内容和 channel 路由。
-            </p>
-            <el-alert
-              v-if="!draft.id"
-              title="请先保存并选择一个 Channel，再开始在线调试。"
-              type="info"
-              :closable="false"
-              show-icon
-              class="top-alert"
-            />
-            <el-alert
-              v-else-if="!inventory.runtimeAccounts.length"
-              title="当前还没有可用的 runtime/account，请先执行安装命令并同步 inventory。"
-              type="warning"
-              :closable="false"
-              show-icon
-              class="top-alert"
-            />
-            <div class="debug-toolbar">
-              <el-select
-                v-model="debugForm.account"
-                class="debug-select"
-                filterable
-                :disabled="!inventory.runtimeAccounts.length"
-                placeholder="选择 runtime/account"
-                @change="handleDebugAccountChange"
-              >
-                <el-option
-                  v-for="item in inventory.runtimeAccounts"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-              <el-select
-                v-model="debugForm.bridgeId"
-                class="debug-select"
-                clearable
-                filterable
-                :disabled="!bridgeOptions.length"
-                placeholder="指定 bridge（可选）"
-              >
-                <el-option
-                  v-for="item in bridgeOptions"
-                  :key="item.bridgeId"
-                  :label="`${item.name || item.bridgeId} · ${item.connected ? '在线' : '离线'}`"
-                  :value="item.bridgeId"
-                />
-              </el-select>
-              <el-select
-                v-model="debugForm.agentId"
-                class="debug-select"
-                filterable
-                :disabled="!currentDebugAgentOptions.length"
-                placeholder="选择 OpenClaw Agent"
-                @change="handleDebugAgentChange"
-              >
-                <el-option
-                  v-for="item in currentDebugAgentOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-              <el-input
-                v-model="debugForm.speaker"
-                class="debug-speaker-input"
-                maxlength="40"
-                placeholder="说话人标签，可选"
-              />
-            </div>
-
-            <div class="debug-session-bar">
-              <div class="debug-session-meta">
-                <span>会话：{{ debugForm.debugSessionId }}</span>
-                <span v-if="debugForm.account">Account：{{ debugForm.account }}</span>
-                <span v-if="debugForm.agentName || debugForm.agentId">Agent：{{ debugForm.agentName || debugForm.agentId }}</span>
-              </div>
-              <div class="inline-actions">
-                <el-button size="small" @click="clearDebugTranscript">清空记录</el-button>
-                <el-button
-                  size="small"
-                  type="warning"
-                  plain
-                  :disabled="!debugForm.account || !debugForm.debugSessionId"
-                  :loading="debugClearing"
-                  @click="clearDebugSession"
-                >
-                  清空会话
-                </el-button>
-                <el-button size="small" type="primary" plain @click="createDebugSession">新建会话</el-button>
-              </div>
-            </div>
-
-            <div class="debug-chat-shell">
-              <div class="debug-transcript">
-                <div v-if="debugMessages.length" class="debug-message-list">
-                  <div
-                    v-for="item in debugMessages"
+                <div v-if="channels.length" class="channel-list">
+                  <button
+                    v-for="item in channels"
                     :key="item.id"
-                    class="debug-message"
-                    :class="`role-${item.role}`"
+                    class="channel-item"
+                    :class="{ active: item.id === draft.id }"
+                    @click="selectChannel(item)"
                   >
-                    <div class="debug-message-head">
-                      <span class="debug-role">
-                        {{
-                          item.role === "user"
-                            ? "后台输入"
-                            : item.role === "assistant"
-                              ? "OpenClaw 返回"
-                              : "系统信息"
-                        }}
-                      </span>
-                      <span v-if="item.meta" class="debug-meta">{{ item.meta }}</span>
+                    <div class="channel-item-main">
+                      <span class="channel-name">{{ item.name || "未命名 channel" }}</span>
+                      <el-tag size="mini" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? "启用" : "停用" }}</el-tag>
                     </div>
-                    <div class="debug-message-body">{{ item.text }}</div>
+                    <span class="channel-url">Account: {{ item.id }}</span>
+                    <span class="channel-hint">{{ item.remark || "保存后可生成安装命令并同步 inventory" }}</span>
+                  </button>
+                </div>
+                <el-empty v-else description="尚未绑定 OpenClaw channel" :image-size="88" />
+              </el-card>
+
+              <el-card class="surface-card sidebar-card context-card" shadow="never">
+                <div class="section-eyebrow">Selected Context</div>
+                <div class="context-title">{{ draft.name || "尚未选择 Channel" }}</div>
+                <div class="context-id">{{ draft.id || "点击左侧 Channel 或直接新建" }}</div>
+                <div class="context-grid">
+                  <div class="context-metric">
+                    <span>命令</span>
+                    <strong>{{ commandStatusText }}</strong>
+                  </div>
+                  <div class="context-metric">
+                    <span>Inventory</span>
+                    <strong>{{ inventoryStatusText }}</strong>
+                  </div>
+                  <div class="context-metric">
+                    <span>Bridge</span>
+                    <strong>{{ inventory.bridges.length || 0 }}</strong>
+                  </div>
+                  <div class="context-metric">
+                    <span>在线设备</span>
+                    <strong>{{ connections.length || 0 }}</strong>
                   </div>
                 </div>
-                <el-empty v-else description="发送一条消息，直接测试当前 OpenClaw agent。" :image-size="90" />
-              </div>
-              <div class="debug-composer">
-                <el-input
-                  v-model="debugForm.inputText"
-                  type="textarea"
-                  :rows="5"
-                  resize="none"
-                  placeholder="输入要发送给 OpenClaw 的测试消息，按 Ctrl + Enter 可快速发送。"
-                  @keyup.ctrl.enter.native="sendDirectChat"
-                />
-                <div class="debug-composer-actions">
-                  <span class="command-hint">发送的是纯后台调试消息，不会推给 ESP32 设备。</span>
-                  <el-button type="primary" :loading="debugSending" :disabled="!canSendDirectChat" @click="sendDirectChat">
-                    发送测试消息
-                  </el-button>
+                <div class="step-list compact-step-list">
+                  <div class="step-item">
+                    <span class="step-index">1</span>
+                    <span>在左侧选一个 channel，或创建新 channel</span>
+                  </div>
+                  <div class="step-item">
+                    <span class="step-index">2</span>
+                    <span>在右侧 tab 内完成接入、运行时控制与观测</span>
+                  </div>
+                  <div class="step-item">
+                    <span class="step-index">3</span>
+                    <span>在线调试统一走弹窗工作台，不再塞回长页面</span>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </el-card>
+              </el-card>
+            </aside>
+
+            <section class="workspace-main">
+              <el-card class="surface-card workspace-card" shadow="never">
+                <el-tabs v-model="activeWorkspaceTab" class="workspace-tabs">
+                  <el-tab-pane label="运行时控制" name="runtime">
+                    <div class="tab-panel">
+                      <div class="section-header">
+                        <div>
+                          <div class="section-eyebrow">Runtime Voice Interrupt</div>
+                          <h3>运行时语音打断</h3>
+                        </div>
+                        <div class="inventory-tags">
+                          <el-tag :type="voiceInterruptState.enabled ? 'success' : 'info'">
+                            {{ voiceInterruptState.enabled ? "当前开启" : "当前关闭" }}
+                          </el-tag>
+                          <el-tag size="mini" type="info">{{ voiceInterruptScopeText }}</el-tag>
+                          <el-button size="small" :loading="voiceInterruptLoading || connectionsLoading" @click="refreshVoiceInterruptPanel">
+                            刷新
+                          </el-button>
+                        </div>
+                      </div>
+                      <p class="section-description">
+                        这里只控制设备播报时是否允许被人声打断。它作用于当前 runtime 下的所有 ESP32 在线连接，不区分原生 Agent 还是 OpenClaw Agent；但它不是整机唤醒词，也不是常开收音总开关。
+                      </p>
+                      <el-alert
+                        v-if="draft.id"
+                        title="这块控制的是 runtime 连接级别的播报打断开关，同一台服务器上的原生模式和 OpenClaw 模式设备都会生效。"
+                        type="success"
+                        :closable="false"
+                        show-icon
+                        class="top-alert"
+                      />
+                      <el-alert
+                        v-if="!draft.id"
+                        title="请先保存并选择一个 Channel，再管理运行时语音打断。"
+                        type="info"
+                        :closable="false"
+                        show-icon
+                        class="top-alert"
+                      />
+                      <div v-else class="interrupt-shell">
+                        <div class="interrupt-summary-grid">
+                          <div class="interrupt-summary-card">
+                            <div class="interrupt-summary-label">状态来源</div>
+                            <div class="interrupt-summary-value">{{ voiceInterruptSourceText }}</div>
+                          </div>
+                          <div class="interrupt-summary-card">
+                            <div class="interrupt-summary-label">作用范围</div>
+                            <div class="interrupt-summary-value">{{ voiceInterruptScopeText }}</div>
+                          </div>
+                          <div class="interrupt-summary-card">
+                            <div class="interrupt-summary-label">当前定位</div>
+                            <div class="interrupt-summary-value">{{ voiceInterruptTargetText }}</div>
+                          </div>
+                          <div class="interrupt-summary-card">
+                            <div class="interrupt-summary-label">最近变更</div>
+                            <div class="interrupt-summary-value">{{ voiceInterruptUpdateText }}</div>
+                          </div>
+                        </div>
+
+                        <div class="interrupt-control-block">
+                          <div>
+                            <div class="inventory-title">全局默认值</div>
+                            <div class="command-hint">会同步更新当前在线连接，但已持久化到设备维度的机器会被跳过。</div>
+                          </div>
+                          <div class="inline-actions">
+                            <el-button
+                              size="small"
+                              type="primary"
+                              :loading="voiceInterruptActionKey === 'global-on'"
+                              @click="setGlobalVoiceInterrupt(true)"
+                            >
+                              全局开启
+                            </el-button>
+                            <el-button
+                              size="small"
+                              type="warning"
+                              plain
+                              :loading="voiceInterruptActionKey === 'global-off'"
+                              @click="setGlobalVoiceInterrupt(false)"
+                            >
+                              全局关闭
+                            </el-button>
+                          </div>
+                        </div>
+
+                        <div class="interrupt-control-block">
+                          <div>
+                            <div class="inventory-title">按设备 ID 控制</div>
+                            <div class="command-hint">适合后台直接指定某台 ESP32。勾选“持久化”后，新连接建立时也会沿用该设备配置，不区分它后面跑的是原生还是 OpenClaw。</div>
+                          </div>
+                          <div class="interrupt-manual-row">
+                            <el-input
+                              v-model.trim="manualVoiceInterruptDeviceId"
+                              class="interrupt-device-input"
+                              placeholder="输入 deviceId，例如 MAC 或业务设备号"
+                            />
+                            <el-checkbox v-model="manualVoiceInterruptPersist">持久化到设备</el-checkbox>
+                            <el-button
+                              size="small"
+                              :loading="voiceInterruptActionKey === 'inspect-device'"
+                              @click="inspectManualVoiceInterrupt"
+                            >
+                              查询
+                            </el-button>
+                            <el-button
+                              size="small"
+                              type="primary"
+                              :loading="voiceInterruptActionKey === 'device-on'"
+                              @click="applyManualVoiceInterrupt(true)"
+                            >
+                              开启
+                            </el-button>
+                            <el-button
+                              size="small"
+                              type="warning"
+                              plain
+                              :loading="voiceInterruptActionKey === 'device-off'"
+                              @click="applyManualVoiceInterrupt(false)"
+                            >
+                              关闭
+                            </el-button>
+                          </div>
+                        </div>
+
+                        <div class="bridge-strip">
+                          <div class="section-header compact-header">
+                            <div>
+                              <div class="inventory-title">当前在线设备</div>
+                              <div class="command-hint">“当前连接”只影响这次在线会话；“按设备”会写成设备维度策略。</div>
+                            </div>
+                            <el-tag size="mini" :type="connections.length ? 'success' : 'info'">{{ connections.length }} 台在线</el-tag>
+                          </div>
+                          <div v-if="connections.length" class="connection-grid">
+                            <div v-for="item in connections" :key="item.sessionId" class="connection-card">
+                              <div class="connection-card-head">
+                                <div>
+                                  <div class="bridge-name">{{ item.deviceId || item.sessionId }}</div>
+                                  <div class="bridge-meta-line">Session: {{ item.sessionId || "-" }}</div>
+                                </div>
+                                <div class="inventory-tags">
+                                  <el-tag size="mini" :type="item.voiceInterruptEnabled ? 'success' : 'info'">
+                                    {{ item.voiceInterruptEnabled ? "可打断" : "不可打断" }}
+                                  </el-tag>
+                                  <el-tag v-if="item.isLatest" size="mini" type="warning">Latest</el-tag>
+                                </div>
+                              </div>
+                              <div class="bridge-meta-line">Device ID: {{ item.deviceId || "-" }}</div>
+                              <div class="bridge-meta-line">Client IP: {{ item.clientIp || "-" }}</div>
+                              <div class="bridge-meta-line">连接时间: {{ formatConnectionTime(item.registeredAt) }}</div>
+                              <div class="connection-actions">
+                                <el-button
+                                  size="mini"
+                                  type="primary"
+                                  :loading="voiceInterruptActionKey === `session-on:${item.sessionId}`"
+                                  @click="setConnectionVoiceInterrupt(item, true, false)"
+                                >
+                                  当前连接开启
+                                </el-button>
+                                <el-button
+                                  size="mini"
+                                  type="warning"
+                                  plain
+                                  :loading="voiceInterruptActionKey === `session-off:${item.sessionId}`"
+                                  @click="setConnectionVoiceInterrupt(item, false, false)"
+                                >
+                                  当前连接关闭
+                                </el-button>
+                                <el-button
+                                  size="mini"
+                                  plain
+                                  :disabled="!item.deviceId"
+                                  :loading="voiceInterruptActionKey === `persist-on:${item.deviceId}`"
+                                  @click="setConnectionVoiceInterrupt(item, true, true)"
+                                >
+                                  按设备开启
+                                </el-button>
+                                <el-button
+                                  size="mini"
+                                  plain
+                                  :disabled="!item.deviceId"
+                                  :loading="voiceInterruptActionKey === `persist-off:${item.deviceId}`"
+                                  @click="setConnectionVoiceInterrupt(item, false, true)"
+                                >
+                                  按设备关闭
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                          <el-empty v-else description="当前没有在线 ESP32 连接" :image-size="72" />
+                        </div>
+                      </div>
+                    </div>
+                  </el-tab-pane>
+
+                  <el-tab-pane :label="draft.id ? 'Channel 接入' : '新建 Channel'" name="channel">
+                    <div class="tab-panel">
+                      <div class="section-header">
+                        <div>
+                          <div class="section-eyebrow">Channel Editor</div>
+                          <h3>{{ draft.id ? "编辑 Channel" : "新增 Channel" }}</h3>
+                        </div>
+                        <div class="inline-actions">
+                          <el-button size="small" @click="resetDraft">清空</el-button>
+                          <el-button size="small" type="danger" plain :disabled="!draft.id" @click="removeDraftChannel">删除</el-button>
+                        </div>
+                      </div>
+                      <p class="section-description">
+                        主流程只需要填写名称。保存后系统会生成 account id、安装命令和后台接入参数。
+                      </p>
+
+                      <div class="channel-editor-grid">
+                        <div class="editor-pane">
+                          <el-form label-position="top" class="channel-form">
+                            <el-form-item label="Channel 名称">
+                              <el-input v-model="draft.name" maxlength="64" placeholder="例如：生产 Runtime" />
+                            </el-form-item>
+                            <el-form-item label="备注">
+                              <el-input v-model="draft.remark" type="textarea" :rows="3" resize="none" maxlength="200" placeholder="可选，用于记录用途或环境说明" />
+                            </el-form-item>
+                            <div class="channel-toggle">
+                              <span>启用该 channel</span>
+                              <el-switch v-model="draft.enabled" />
+                            </div>
+                            <div class="channel-actions">
+                              <el-button type="primary" @click="saveChannels" :loading="saving">保存 Channel 配置</el-button>
+                              <el-button @click="copyInstallCommand" :disabled="!setupGuide.installCommand">复制安装命令</el-button>
+                              <el-button @click="syncDraftInventory" :loading="inventoryLoading" :disabled="!draft.id">测试并拉取 Inventory</el-button>
+                            </div>
+                          </el-form>
+
+                          <el-collapse v-model="advancedPanels" class="advanced-panel">
+                            <el-collapse-item name="advanced" title="高级配置（通常不用改）">
+                              <el-form label-position="top" class="channel-form advanced-form">
+                                <el-form-item label="管理接口基础地址">
+                                  <el-input v-model="draft.baseUrl" placeholder="默认自动生成，例如：https://example.com/admin/openclaw" />
+                                </el-form-item>
+                                <el-form-item label="Inventory 路径">
+                                  <el-input v-model="draft.inventoryPath" placeholder="/inventory" />
+                                </el-form-item>
+                                <el-form-item label="Access Token">
+                                  <el-input v-model="draft.accessToken" show-password placeholder="默认自动注入 server secret" />
+                                </el-form-item>
+                              </el-form>
+                            </el-collapse-item>
+                          </el-collapse>
+                        </div>
+
+                        <div class="editor-pane guide-pane">
+                          <div class="section-eyebrow">Setup Flow</div>
+                          <div class="step-list compact-step-list">
+                            <div class="step-item">
+                              <span class="step-index">1</span>
+                              <span>填写 Channel 名称并保存</span>
+                            </div>
+                            <div class="step-item">
+                              <span class="step-index">2</span>
+                              <span>复制命令到 OpenClaw 项目目录执行</span>
+                            </div>
+                            <div class="step-item">
+                              <span class="step-index">3</span>
+                              <span>执行完成后回来点击“测试并拉取 Inventory”</span>
+                            </div>
+                          </div>
+
+                          <div class="command-panel" v-loading="guideLoading">
+                            <div class="command-header">
+                              <div>
+                                <div class="section-eyebrow">Setup Command</div>
+                                <h4 class="command-title">可复制的 OpenClaw 安装命令</h4>
+                              </div>
+                              <el-tag size="mini" :type="setupGuide.installCommand ? 'success' : 'info'">{{ commandStatusText }}</el-tag>
+                            </div>
+                            <div class="command-meta">
+                              <div class="meta-line">
+                                <span class="meta-line-key">Account ID</span>
+                                <span class="meta-line-value">{{ setupGuide.channelId || "保存后自动生成" }}</span>
+                              </div>
+                              <div class="meta-line">
+                                <span class="meta-line-key">默认 Agent</span>
+                                <span class="meta-line-value">{{ setupGuide.defaultAgentId || "main" }}</span>
+                              </div>
+                            </div>
+                            <el-alert
+                              v-if="!setupGuide.accessTokenConfigured && draft.id"
+                              title="系统未检测到 server secret，当前无法生成可执行命令，请先补齐后台 server.secret。"
+                              type="warning"
+                              :closable="false"
+                              show-icon
+                              class="top-alert"
+                            />
+                            <el-input
+                              type="textarea"
+                              :rows="6"
+                              resize="none"
+                              readonly
+                              class="command-textarea"
+                              :value="setupGuide.installCommand || '先保存 Channel，系统会在这里生成可直接复制的 npx 命令。'"
+                            />
+                            <div class="command-hint">
+                              命令示例用法：进入 OpenClaw 项目目录后执行即可，例如 `cd ~/openclaw && ...`。命令里已经带好 server、admin key、account 和 channel 名称。
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </el-tab-pane>
+
+                  <el-tab-pane label="观测与调试" name="observe">
+                    <div class="tab-panel observe-grid">
+                      <div class="observe-main">
+                        <div class="section-header">
+                          <div>
+                            <div class="section-eyebrow">Inventory</div>
+                            <h3>Channel 可选项</h3>
+                          </div>
+                          <div class="inventory-tags">
+                            <el-tag :type="inventory.healthy ? 'success' : 'warning'">{{ inventoryStatusText }}</el-tag>
+                            <el-tag size="mini" :type="(inventory.connectedBridgeCount || 0) > 0 ? 'success' : 'info'">{{ bridgeStatusText }}</el-tag>
+                          </div>
+                        </div>
+                        <p class="section-description">
+                          这里展示 channel 实际回传的 runtime/account 与 OpenClaw agent 列表。智能体绑定页会直接消费这些下拉项。
+                        </p>
+                        <el-alert
+                          v-if="inventory.errorMessage"
+                          :title="inventory.errorMessage"
+                          type="warning"
+                          :closable="false"
+                          show-icon
+                          class="top-alert"
+                        />
+                        <div class="bridge-strip">
+                          <div class="inventory-title">Bridge 状态</div>
+                          <div v-if="inventory.bridges.length" class="bridge-grid">
+                            <div v-for="item in inventory.bridges" :key="item.bridgeId" class="bridge-card">
+                              <div class="bridge-card-head">
+                                <span class="bridge-name">{{ item.name || item.bridgeId }}</span>
+                                <el-tag size="mini" :type="item.connected ? 'success' : 'info'">{{ item.connected ? "在线" : "离线" }}</el-tag>
+                              </div>
+                              <div class="bridge-meta-line">Account: {{ item.account || "-" }}</div>
+                              <div class="bridge-meta-line">Bridge ID: {{ item.bridgeId }}</div>
+                            </div>
+                          </div>
+                          <el-empty v-else description="当前未发现 OpenClaw bridge" :image-size="72" />
+                        </div>
+                        <div class="inventory-grid">
+                          <div class="inventory-block">
+                            <div class="inventory-title">Runtime / Account</div>
+                            <div v-if="inventory.runtimeAccounts.length" class="inventory-list">
+                              <div v-for="item in inventory.runtimeAccounts" :key="item.value" class="inventory-chip">
+                                {{ item.label }}
+                              </div>
+                            </div>
+                            <el-empty v-else description="当前未返回 runtime/account 选项" :image-size="80" />
+                          </div>
+                          <div class="inventory-block">
+                            <div class="inventory-title">OpenClaw Agents</div>
+                            <div v-if="inventory.agents.length" class="inventory-list">
+                              <div v-for="item in inventory.agents" :key="item.value" class="inventory-chip">
+                                {{ item.label }}
+                              </div>
+                            </div>
+                            <el-empty v-else description="当前未返回 OpenClaw agent 选项" :image-size="80" />
+                          </div>
+                        </div>
+                        <div class="runtime-list">
+                          <div class="runtime-item">
+                            <span class="runtime-path">Source URL</span>
+                            <span class="runtime-note">{{ inventory.sourceUrl || "尚未测试 inventory 接口" }}</span>
+                          </div>
+                          <div class="runtime-item">
+                            <span class="runtime-path">绑定策略</span>
+                            <span class="runtime-note">先绑定 Channel，再让智能体表单按 channel 下拉选择 runtime/account 和 OpenClaw agent。</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="observe-side">
+                        <div class="debug-entry-card">
+                          <div class="section-header">
+                            <div>
+                              <div class="section-eyebrow">Online Console</div>
+                              <h3>OpenClaw 在线调试台</h3>
+                            </div>
+                            <el-button
+                              type="primary"
+                              class="debug-open-btn"
+                              :disabled="!draft.id || !inventory.runtimeAccounts.length"
+                              @click="showDebugDialog = true"
+                            >
+                              打开调试台
+                            </el-button>
+                          </div>
+                          <p class="section-description">
+                            在线调试已经改成独立弹窗工作台，避免在长页里挤压阅读空间。适合集中验证 channel 路由、agent 选择和回复文本。
+                          </p>
+                          <div class="debug-entry-grid">
+                            <div class="debug-entry-stat">
+                              <span class="debug-entry-label">当前 Channel</span>
+                              <strong class="debug-entry-value">{{ draft.name || "未选择" }}</strong>
+                            </div>
+                            <div class="debug-entry-stat">
+                              <span class="debug-entry-label">Runtime / Account</span>
+                              <strong class="debug-entry-value">{{ inventory.runtimeAccounts.length || 0 }}</strong>
+                            </div>
+                            <div class="debug-entry-stat">
+                              <span class="debug-entry-label">Bridge</span>
+                              <strong class="debug-entry-value">{{ inventory.bridges.length || 0 }}</strong>
+                            </div>
+                            <div class="debug-entry-stat">
+                              <span class="debug-entry-label">OpenClaw Agent</span>
+                              <strong class="debug-entry-value">{{ inventory.agents.length || 0 }}</strong>
+                            </div>
+                          </div>
+                          <el-alert
+                            v-if="!draft.id"
+                            title="请先保存并选择一个 Channel，再开始在线调试。"
+                            type="info"
+                            :closable="false"
+                            show-icon
+                            class="top-alert"
+                          />
+                          <el-alert
+                            v-else-if="!inventory.runtimeAccounts.length"
+                            title="当前还没有可用的 runtime/account，请先执行安装命令并同步 inventory。"
+                            type="warning"
+                            :closable="false"
+                            show-icon
+                            class="top-alert"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </el-tab-pane>
+                </el-tabs>
+              </el-card>
+            </section>
+          </div>
         </div>
       </div>
     </div>
+
+    <OpenClawDebugDialog
+      :visible.sync="showDebugDialog"
+      :channel="draft"
+      :inventory="inventory"
+      :route-prefill="routePrefill"
+    />
 
     <el-footer>
       <VersionFooter />
@@ -597,6 +588,7 @@
 <script>
 import Api from "@/apis/api";
 import HeaderBar from "@/components/HeaderBar.vue";
+import OpenClawDebugDialog from "@/components/OpenClawDebugDialog.vue";
 import VersionFooter from "@/components/VersionFooter.vue";
 
 const createEmptyChannel = () => ({
@@ -618,6 +610,7 @@ const createEmptyInventory = () => ({
   agents: [],
   bridges: [],
   accountAgents: {},
+  bridgeAgents: {},
   connectedBridgeCount: 0,
 });
 
@@ -647,18 +640,6 @@ const createEmptyVoiceInterruptState = () => ({
   rawResult: {},
 });
 
-const createDebugSessionId = () => `web-debug-${Date.now()}`;
-
-const createEmptyDebugForm = () => ({
-  account: "",
-  bridgeId: "",
-  agentId: "",
-  agentName: "",
-  speaker: "后台调试",
-  inputText: "",
-  debugSessionId: createDebugSessionId(),
-});
-
 const createEmptyRoutePrefill = () => ({
   channelId: "",
   runtimeAccount: "",
@@ -671,6 +652,7 @@ export default {
   name: "OpenClawManagement",
   components: {
     HeaderBar,
+    OpenClawDebugDialog,
     VersionFooter,
   },
   data() {
@@ -691,13 +673,11 @@ export default {
       voiceInterruptActionKey: "",
       manualVoiceInterruptDeviceId: "",
       manualVoiceInterruptPersist: true,
-      debugForm: createEmptyDebugForm(),
-      debugMessages: [],
-      debugSending: false,
-      debugClearing: false,
       routePrefill: createEmptyRoutePrefill(),
       routePrefillApplied: false,
+      activeWorkspaceTab: "runtime",
       advancedPanels: [],
+      showDebugDialog: false,
     };
   },
   computed: {
@@ -772,36 +752,18 @@ export default {
       }
       return "暂无变更";
     },
-    bridgeOptions() {
-      const list = Array.isArray(this.inventory.bridges) ? this.inventory.bridges : [];
-      if (!this.debugForm.account) {
-        return list;
-      }
-      return list.filter((item) => item.account === this.debugForm.account);
-    },
-    currentDebugAgentOptions() {
-      const accountKey = this.debugForm.account;
-      const accountAgents = (this.inventory.accountAgents && this.inventory.accountAgents[accountKey]) || [];
-      if (Array.isArray(accountAgents) && accountAgents.length) {
-        return accountAgents;
-      }
-      return Array.isArray(this.inventory.agents) ? this.inventory.agents : [];
-    },
-    canSendDirectChat() {
-      return Boolean(
-        this.draft.id &&
-        this.debugForm.account &&
-        this.debugForm.agentId &&
-        this.debugForm.inputText &&
-        this.debugForm.inputText.trim()
-      );
-    },
   },
   watch: {
     "$route.query": {
       immediate: true,
       handler(query) {
         const routeQuery = query || {};
+        const entryTabMap = {
+          channel: "channel",
+          inventory: "observe",
+          debug: "observe",
+          runtime: "runtime",
+        };
         this.agentId = routeQuery.agentId || "";
         this.routePrefill = {
           channelId: routeQuery.channelId || "",
@@ -810,6 +772,9 @@ export default {
           openclawAgentName: routeQuery.openclawAgentName || "",
           entry: routeQuery.entry || "",
         };
+        if (entryTabMap[routeQuery.entry]) {
+          this.activeWorkspaceTab = entryTabMap[routeQuery.entry];
+        }
         this.routePrefillApplied = false;
       },
     },
@@ -818,14 +783,22 @@ export default {
     this.loadChannels();
   },
   methods: {
-    loadChannels() {
+    loadChannels(preferredChannelId = "") {
       this.loading = true;
       Api.openclaw.getChannels(({ data }) => {
         this.loading = false;
         if (data.code === 0) {
           this.channels = Array.isArray(data.data) ? data.data : [];
-          if (this.routePrefill.channelId) {
+          if (preferredChannelId) {
+            const preferredChannel = this.channels.find((item) => item.id === preferredChannelId);
+            if (preferredChannel) {
+              this.selectChannel(preferredChannel);
+              return;
+            }
+          }
+          if (!this.routePrefillApplied && this.routePrefill.channelId) {
             const routedChannel = this.channels.find((item) => item.id === this.routePrefill.channelId);
+            this.routePrefillApplied = true;
             if (routedChannel) {
               this.selectChannel(routedChannel);
               return;
@@ -856,8 +829,6 @@ export default {
         enabled: channel.enabled !== false,
         remark: channel.remark || "",
       };
-      this.debugForm = createEmptyDebugForm();
-      this.debugMessages = [];
       this.refreshSetupGuide();
       this.syncDraftInventory();
       this.refreshVoiceInterruptPanel();
@@ -871,8 +842,7 @@ export default {
       this.voiceInterruptActionKey = "";
       this.manualVoiceInterruptDeviceId = "";
       this.manualVoiceInterruptPersist = true;
-      this.debugForm = createEmptyDebugForm();
-      this.debugMessages = [];
+      this.activeWorkspaceTab = "channel";
       this.advancedPanels = [];
     },
     refreshSetupGuide() {
@@ -900,44 +870,40 @@ export default {
         this.$message.warning("请先填写 Channel 名称");
         return;
       }
-      const nextChannels = this.channels.filter((item) => item.id !== this.draft.id);
-      const channelToSave = {
-        ...this.draft,
-        id: this.draft.id || `channel-${Date.now()}`,
-      };
-      nextChannels.unshift(channelToSave);
       this.saving = true;
-      Api.openclaw.saveChannels(nextChannels, ({ data }) => {
+      const payload = { ...this.draft };
+      const onSuccess = ({ data }) => {
         this.saving = false;
         if (data.code === 0) {
-          this.channels = Array.isArray(data.data) ? data.data : [];
-          const saved = this.channels.find((item) => item.id === channelToSave.id) || this.channels[0];
-          if (saved) {
-            this.selectChannel(saved);
-          }
+          const savedChannel = data.data || {};
+          this.loadChannels(savedChannel.id || this.draft.id || "");
           this.$message.success("OpenClaw channel 配置已保存");
         } else {
           this.$message.error(data.msg || "保存 OpenClaw channel 失败");
         }
-      }, ({ data }) => {
+      };
+      const onFail = ({ data }) => {
         this.saving = false;
         this.$message.error((data && data.msg) || "保存 OpenClaw channel 失败");
-      });
+      };
+      if (this.draft.id) {
+        Api.openclaw.updateChannel(this.draft.id, payload, onSuccess, onFail);
+        return;
+      }
+      Api.openclaw.createChannel(payload, onSuccess, onFail);
     },
     removeDraftChannel() {
       if (!this.draft.id) {
         return;
       }
-      const nextChannels = this.channels.filter((item) => item.id !== this.draft.id);
+      const deletingId = this.draft.id;
+      const fallbackChannel = this.channels.find((item) => item.id !== deletingId);
       this.saving = true;
-      Api.openclaw.saveChannels(nextChannels, ({ data }) => {
+      Api.openclaw.deleteChannel(deletingId, ({ data }) => {
         this.saving = false;
         if (data.code === 0) {
-          this.channels = Array.isArray(data.data) ? data.data : [];
           this.resetDraft();
-          if (this.channels.length) {
-            this.selectChannel(this.channels[0]);
-          }
+          this.loadChannels(fallbackChannel ? fallbackChannel.id : "");
           this.$message.success("OpenClaw channel 已删除");
         } else {
           this.$message.error(data.msg || "删除 OpenClaw channel 失败");
@@ -947,7 +913,98 @@ export default {
         this.$message.error((data && data.msg) || "删除 OpenClaw channel 失败");
       });
     },
-    syncDraftInventory() {
+    normalizeChannelPath(path, fallback = "/") {
+      const text = (path || "").trim();
+      if (!text) {
+        return fallback;
+      }
+      return text.startsWith("/") ? text : `/${text}`;
+    },
+    buildChannelApiUrl(path, query = null) {
+      const baseUrl = (this.draft.baseUrl || "").trim().replace(/\/+$/, "");
+      if (!baseUrl) {
+        throw new Error("当前 Channel 缺少 baseUrl");
+      }
+      const url = new URL(`${baseUrl}${this.normalizeChannelPath(path)}`);
+      Object.entries(query || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === "") {
+          return;
+        }
+        url.searchParams.set(key, value);
+      });
+      return url.toString();
+    },
+    buildChannelApiHeaders(includeJson = false) {
+      const headers = {};
+      const accessToken = (this.draft.accessToken || "").trim();
+      if (includeJson) {
+        headers["Content-Type"] = "application/json";
+      }
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+        headers["X-OpenClaw-Token"] = accessToken;
+      }
+      return headers;
+    },
+    async requestChannelEndpoint(path, { method = "GET", body = null, query = null } = {}) {
+      const response = await fetch(this.buildChannelApiUrl(path, query), {
+        method,
+        headers: this.buildChannelApiHeaders(Boolean(body)),
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const rawText = await response.text();
+      let payload = {};
+      if (rawText) {
+        try {
+          payload = JSON.parse(rawText);
+        } catch (error) {
+          throw new Error(`OpenClaw 接口返回了非 JSON 内容（HTTP ${response.status}）`);
+        }
+      }
+      if (!response.ok || payload.ok === false) {
+        throw new Error(
+          payload.message || payload.errorMessage || payload.msg || `OpenClaw 接口请求失败（HTTP ${response.status}）`
+        );
+      }
+      return payload && payload.data ? payload.data : payload;
+    },
+    pickChannelReplyText(result) {
+      if (!result) {
+        return "";
+      }
+      const tryKeys = (source, keys) => {
+        for (const key of keys) {
+          const value = source ? source[key] : "";
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+        return "";
+      };
+      if (typeof result === "string") {
+        return result.trim();
+      }
+      const directText = tryKeys(result, ["text", "replyText", "reply", "message", "output"]);
+      if (directText) {
+        return directText;
+      }
+      const nestedPayloads = [
+        result.data,
+        result.payload,
+        result.response,
+        result.result,
+      ];
+      for (const item of nestedPayloads) {
+        if (item && typeof item === "object") {
+          const nestedText = tryKeys(item, ["text", "replyText", "reply", "message", "output"]);
+          if (nestedText) {
+            return nestedText;
+          }
+        }
+      }
+      return "";
+    },
+    async syncDraftInventory() {
       if (!this.draft.id) {
         this.inventory = {
           ...createEmptyInventory(),
@@ -956,24 +1013,26 @@ export default {
         return;
       }
       this.inventoryLoading = true;
-      Api.openclaw.getChannelInventory(this.draft.id, ({ data }) => {
-        this.inventoryLoading = false;
-        if (data.code === 0) {
-          this.inventory = data.data || createEmptyInventory();
-          this.applyDebugDefaults();
-        } else {
-          this.inventory = {
-            ...createEmptyInventory(),
-            errorMessage: data.msg || "同步 OpenClaw inventory 失败",
-          };
-        }
-      }, ({ data }) => {
+      try {
+        const payload = await this.requestChannelEndpoint(
+          this.draft.inventoryPath || "/inventory"
+        );
         this.inventoryLoading = false;
         this.inventory = {
           ...createEmptyInventory(),
-          errorMessage: (data && data.msg) || "同步 OpenClaw inventory 失败",
+          ...(payload || {}),
+          channelId: this.draft.id,
+          sourceUrl: this.buildChannelApiUrl(this.draft.inventoryPath || "/inventory"),
         };
-      });
+      } catch (error) {
+        this.inventoryLoading = false;
+        this.inventory = {
+          ...createEmptyInventory(),
+          channelId: this.draft.id,
+          sourceUrl: (this.draft.baseUrl || "").trim(),
+          errorMessage: error.message || "同步 OpenClaw inventory 失败",
+        };
+      }
     },
     refreshVoiceInterruptPanel() {
       if (!this.draft.id) {
@@ -1111,90 +1170,6 @@ export default {
           : `已${enabled ? "开启" : "关闭"}当前设备在线连接语音打断`
       );
     },
-    applyDebugDefaults() {
-      const runtimeAccounts = Array.isArray(this.inventory.runtimeAccounts) ? this.inventory.runtimeAccounts : [];
-      if (!runtimeAccounts.length) {
-        this.debugForm.account = "";
-        this.debugForm.bridgeId = "";
-        this.debugForm.agentId = "";
-        this.debugForm.agentName = "";
-        return;
-      }
-
-      if (!this.routePrefillApplied) {
-        const matchedAccount = runtimeAccounts.find((item) => item.value === this.routePrefill.runtimeAccount);
-        if (matchedAccount) {
-          this.debugForm.account = matchedAccount.value;
-        }
-      }
-
-      if (!runtimeAccounts.some((item) => item.value === this.debugForm.account)) {
-        this.debugForm.account = runtimeAccounts[0].value;
-      }
-
-      this.syncDebugBridge();
-      const currentAgents = this.currentDebugAgentOptions;
-      if (!this.routePrefillApplied) {
-        const matchedAgent = currentAgents.find((item) => item.value === this.routePrefill.openclawAgentId);
-        if (matchedAgent) {
-          this.debugForm.agentId = matchedAgent.value;
-          this.debugForm.agentName = matchedAgent.label;
-        }
-      }
-      if (!currentAgents.some((item) => item.value === this.debugForm.agentId)) {
-        const firstAgent = currentAgents[0];
-        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
-        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
-      } else {
-        this.debugForm.agentName = this.findOptionLabel(
-          currentAgents,
-          this.debugForm.agentId,
-          this.debugForm.agentName || this.debugForm.agentId
-        );
-      }
-
-      if (!this.routePrefillApplied) {
-        this.routePrefillApplied = true;
-      }
-    },
-    syncDebugBridge() {
-      const bridgeOptions = this.bridgeOptions;
-      if (!bridgeOptions.length) {
-        this.debugForm.bridgeId = "";
-        return;
-      }
-      const currentBridgeExists = bridgeOptions.some((item) => item.bridgeId === this.debugForm.bridgeId);
-      if (currentBridgeExists) {
-        return;
-      }
-      const preferredBridge = bridgeOptions.find((item) => item.connected) || bridgeOptions[0];
-      this.debugForm.bridgeId = preferredBridge ? preferredBridge.bridgeId : "";
-    },
-    handleDebugAccountChange(value) {
-      this.debugForm.account = value;
-      this.syncDebugBridge();
-      const agentOptions = this.currentDebugAgentOptions;
-      const matched = agentOptions.find((item) => item.value === this.debugForm.agentId);
-      if (!matched) {
-        const firstAgent = agentOptions[0];
-        this.debugForm.agentId = firstAgent ? firstAgent.value : "";
-        this.debugForm.agentName = firstAgent ? firstAgent.label : "";
-        return;
-      }
-      this.debugForm.agentName = matched.label;
-    },
-    handleDebugAgentChange(value) {
-      this.debugForm.agentId = value;
-      this.debugForm.agentName = this.findOptionLabel(
-        this.currentDebugAgentOptions,
-        value,
-        this.debugForm.agentName || value
-      );
-    },
-    findOptionLabel(list, value, fallback = "") {
-      const matched = (Array.isArray(list) ? list : []).find((item) => item.value === value);
-      return matched ? matched.label : fallback;
-    },
     formatConnectionTime(timestamp) {
       if (timestamp === undefined || timestamp === null || timestamp === "") {
         return "-";
@@ -1204,110 +1179,6 @@ export default {
         return String(timestamp);
       }
       return new Date(numeric * 1000).toLocaleString();
-    },
-    createDebugSession() {
-      this.debugForm.debugSessionId = createDebugSessionId();
-      this.debugMessages = [];
-      this.$message.success("已创建新的 OpenClaw 调试会话");
-    },
-    rotateDebugSession(preserveTranscript = false) {
-      this.debugForm.debugSessionId = createDebugSessionId();
-      if (!preserveTranscript) {
-        this.debugMessages = [];
-      }
-    },
-    clearDebugTranscript() {
-      this.debugMessages = [];
-    },
-    appendDebugMessage(role, text, extra = {}) {
-      this.debugMessages.push({
-        id: `${role}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-        role,
-        text,
-        meta: extra.meta || "",
-      });
-    },
-    clearDebugSession() {
-      if (!this.draft.id || !this.debugForm.account || !this.debugForm.debugSessionId) {
-        this.$message.warning("当前没有可清理的 OpenClaw 调试会话");
-        return;
-      }
-      this.$confirm("清空当前 OpenClaw 调试会话后，将移除本次会话上下文并开始新的会话。是否继续？", "提示", {
-        confirmButtonText: "确定",
-        cancelButtonText: "取消",
-        type: "warning",
-      }).then(() => {
-        this.debugClearing = true;
-        const payload = {
-          account: this.debugForm.account,
-          bridgeId: this.debugForm.bridgeId,
-          sessionId: this.debugForm.debugSessionId,
-          allowLatest: false,
-        };
-        Api.openclaw.clearSession(this.draft.id, payload, ({ data }) => {
-          this.debugClearing = false;
-          if (data.code === 0) {
-            const clearedSessionId = this.debugForm.debugSessionId;
-            this.appendDebugMessage("system", `已清空 OpenClaw 调试会话：${clearedSessionId}`);
-            this.rotateDebugSession(true);
-            this.$message.success("OpenClaw 调试会话已清空");
-            return;
-          }
-          const errorMessage = data.msg || "清空 OpenClaw 调试会话失败";
-          this.appendDebugMessage("system", errorMessage);
-          this.$message.error(errorMessage);
-        }, ({ data }) => {
-          this.debugClearing = false;
-          const errorMessage = (data && data.msg) || "清空 OpenClaw 调试会话失败";
-          this.appendDebugMessage("system", errorMessage);
-          this.$message.error(errorMessage);
-        });
-      }).catch(() => {});
-    },
-    sendDirectChat() {
-      if (!this.canSendDirectChat) {
-        this.$message.warning("请先选择 runtime/account、OpenClaw Agent，并填写测试消息");
-        return;
-      }
-      const text = this.debugForm.inputText.trim();
-      const payload = {
-        account: this.debugForm.account,
-        bridgeId: this.debugForm.bridgeId,
-        agentId: this.debugForm.agentId,
-        agentName: this.debugForm.agentName,
-        debugSessionId: this.debugForm.debugSessionId,
-        speaker: this.debugForm.speaker,
-        text,
-      };
-
-      this.appendDebugMessage("user", text, {
-        meta: `${this.debugForm.account} / ${this.debugForm.agentName || this.debugForm.agentId}`,
-      });
-      this.debugSending = true;
-      this.debugForm.inputText = "";
-
-      Api.openclaw.directChat(this.draft.id, payload, ({ data }) => {
-        this.debugSending = false;
-        if (data.code === 0) {
-          const response = data.data || {};
-          if (response.debugSessionId) {
-            this.debugForm.debugSessionId = response.debugSessionId;
-          }
-          const replyText = response.replyText || "OpenClaw 已处理，但没有返回文本";
-          const metaParts = [response.account, response.agentName || response.agentId].filter(Boolean);
-          this.appendDebugMessage("assistant", replyText, {
-            meta: metaParts.join(" / "),
-          });
-          return;
-        }
-        this.appendDebugMessage("system", data.msg || "OpenClaw 在线调试失败");
-        this.$message.error(data.msg || "OpenClaw 在线调试失败");
-      }, ({ data }) => {
-        this.debugSending = false;
-        const errorMessage = (data && data.msg) || "OpenClaw 在线调试失败";
-        this.appendDebugMessage("system", errorMessage);
-        this.$message.error(errorMessage);
-      });
     },
     copyInstallCommand() {
       if (!this.setupGuide.installCommand) {
@@ -1365,42 +1236,50 @@ export default {
 
 <style scoped>
 .welcome {
-  min-width: 900px;
+  min-width: 0;
   min-height: 506px;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(145deg, #eef2ff, #f8fbff);
+  background:
+    radial-gradient(circle at top left, rgba(112, 146, 255, 0.18), transparent 24%),
+    linear-gradient(145deg, #eef2ff, #f8fbff);
 }
 
 .operation-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 24px 28px 12px;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 28px 14px;
 }
 
 .title-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  max-width: 760px;
 }
 
 .page-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 30px;
+  line-height: 1.15;
   color: #24304a;
 }
 
 .page-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #7f8aa3;
+  line-height: 1.7;
+  color: #6e7a92;
 }
 
 .page-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .ghost-btn,
@@ -1410,90 +1289,116 @@ export default {
 
 .main-wrapper {
   flex: 1;
+  min-height: 0;
   padding: 0 28px 28px;
 }
 
 .content-panel,
 .content-area {
   height: 100%;
+  min-height: 0;
 }
 
-.hero-card,
+.content-area {
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .surface-card {
   border-radius: 24px;
   border: none;
+  box-shadow: 0 14px 42px rgba(36, 48, 74, 0.08);
 }
 
-.hero-card {
+.overview-strip {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
-  padding: 28px;
-  background: linear-gradient(120deg, #22304f, #385a9a);
-  color: #fff;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at top right, rgba(87, 120, 255, 0.24), transparent 22%),
+    linear-gradient(135deg, #ffffff, #eef4ff 58%, #f6f9ff);
+  border: 1px solid rgba(182, 197, 235, 0.72);
 }
 
-.hero-label {
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
+.overview-intro {
+  flex: 1;
+  min-width: 0;
 }
 
-.hero-title {
-  margin: 10px 0 8px;
+.overview-title {
+  margin: 8px 0 0;
   font-size: 28px;
+  line-height: 1.18;
+  color: #22304f;
 }
 
-.hero-description {
-  max-width: 680px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.82);
+.overview-description {
+  max-width: 760px;
+  margin: 12px 0 0;
+  color: #60708d;
   line-height: 1.7;
 }
 
-.hero-meta {
-  display: flex;
-  flex-wrap: wrap;
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  align-content: flex-start;
-  justify-content: flex-end;
+  min-width: min(520px, 48%);
 }
 
-.meta-pill {
-  min-width: 150px;
+.overview-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
   padding: 14px 16px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(10px);
+  background: rgba(248, 250, 255, 0.92);
+  border: 1px solid rgba(214, 223, 243, 0.86);
 }
 
-.meta-key {
-  display: block;
+.overview-stat-label {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.64);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a86a0;
 }
 
-.meta-value {
-  display: block;
-  margin-top: 6px;
-  font-size: 15px;
-  font-weight: 600;
+.overview-stat-value {
+  font-size: 18px;
+  line-height: 1.2;
+  color: #24304a;
+  word-break: break-word;
 }
 
-.surface-grid {
+.overview-stat-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #68758e;
+  word-break: break-word;
+}
+
+.workspace-shell {
   display: grid;
-  grid-template-columns: minmax(280px, 0.88fr) minmax(420px, 1.12fr);
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   gap: 18px;
   margin-top: 20px;
+  align-items: start;
 }
 
-.surface-card {
-  padding: 8px;
+.workspace-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.wide-card {
-  margin-top: 20px;
+.sidebar-card,
+.workspace-card {
+  padding: 10px;
 }
 
 .section-header {
@@ -1507,7 +1412,7 @@ export default {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: #8d97ab;
+  color: #8090ae;
 }
 
 .section-header h3 {
@@ -1522,9 +1427,19 @@ export default {
   line-height: 1.7;
 }
 
+.sidebar-description {
+  margin-bottom: 0;
+}
+
 .tool-count {
   color: #5d6882;
   font-weight: 600;
+}
+
+.sidebar-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
 }
 
 .channel-list {
@@ -1532,20 +1447,32 @@ export default {
   flex-direction: column;
   gap: 10px;
   margin-top: 16px;
+  max-height: 480px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .channel-item {
+  width: 100%;
   padding: 14px 16px;
   border: 1px solid #e4eaf8;
   border-radius: 16px;
-  background: #f8faff;
+  background: linear-gradient(180deg, #fbfcff, #f5f8ff);
   text-align: left;
   cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.channel-item:hover {
+  transform: translateY(-1px);
+  border-color: #c7d5fa;
+  box-shadow: 0 10px 24px rgba(87, 120, 255, 0.08);
 }
 
 .channel-item.active {
   border-color: #5778ff;
-  background: #eef2ff;
+  background: linear-gradient(180deg, #f2f5ff, #e9efff);
+  box-shadow: inset 0 0 0 1px rgba(87, 120, 255, 0.16);
 }
 
 .channel-item-main {
@@ -1567,20 +1494,82 @@ export default {
   word-break: break-all;
 }
 
+.channel-hint {
+  display: block;
+  margin-top: 6px;
+  color: #8a94ab;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.context-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 247, 255, 0.98)),
+    #fff;
+}
+
+.context-title {
+  margin-top: 10px;
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #24304a;
+  word-break: break-word;
+}
+
+.context-id {
+  margin-top: 8px;
+  color: #6f7b95;
+  word-break: break-word;
+}
+
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.context-metric {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f7f9ff;
+  border: 1px solid #e3e9f6;
+}
+
+.context-metric span {
+  display: block;
+  font-size: 12px;
+  color: #7a86a0;
+}
+
+.context-metric strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+  color: #24304a;
+  word-break: break-word;
+}
+
 .step-list {
   display: grid;
   gap: 10px;
   margin-top: 18px;
 }
 
+.compact-step-list {
+  margin-top: 16px;
+}
+
 .step-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
   border-radius: 16px;
   background: #f8faff;
   color: #44506a;
+  line-height: 1.6;
 }
 
 .step-index {
@@ -1589,6 +1578,7 @@ export default {
   justify-content: center;
   width: 24px;
   height: 24px;
+  flex-shrink: 0;
   border-radius: 999px;
   background: #223d7a;
   color: #fff;
@@ -1596,8 +1586,67 @@ export default {
   font-weight: 700;
 }
 
+.workspace-main {
+  min-width: 0;
+}
+
+.workspace-card {
+  min-height: calc(100vh - 240px);
+}
+
+::v-deep .workspace-tabs .el-tabs__header {
+  margin-bottom: 8px;
+}
+
+::v-deep .workspace-tabs .el-tabs__nav-wrap::after {
+  background-color: #e2e8f6;
+}
+
+::v-deep .workspace-tabs .el-tabs__item {
+  height: 44px;
+  line-height: 44px;
+  font-size: 15px;
+  color: #5d6b88;
+}
+
+::v-deep .workspace-tabs .el-tabs__item.is-active {
+  color: #3153a6;
+  font-weight: 600;
+}
+
+::v-deep .workspace-tabs .el-tabs__active-bar {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2f58b3, #6284ff);
+}
+
+.tab-panel {
+  padding: 10px 2px 6px;
+}
+
+.channel-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.editor-pane {
+  min-width: 0;
+  padding: 18px;
+  border-radius: 22px;
+  background: #f9fbff;
+  border: 1px solid #e6ecfa;
+}
+
+.guide-pane {
+  background:
+    linear-gradient(180deg, rgba(244, 247, 255, 0.96), rgba(238, 243, 255, 0.98)),
+    #eef3ff;
+}
+
 .channel-form {
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 .channel-toggle {
@@ -1620,10 +1669,10 @@ export default {
 }
 
 .command-panel {
-  margin-top: 20px;
+  margin-top: 18px;
   padding: 18px;
   border-radius: 20px;
-  background: linear-gradient(180deg, #f7f9ff, #eef3ff);
+  background: linear-gradient(180deg, #f7f9ff, #edf2ff);
 }
 
 .command-header {
@@ -1684,6 +1733,18 @@ export default {
   margin-top: 0;
 }
 
+.observe-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.observe-main,
+.observe-side {
+  min-width: 0;
+}
+
 .inventory-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1721,6 +1782,7 @@ export default {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .bridge-strip {
@@ -1846,122 +1908,48 @@ export default {
   margin-top: 14px;
 }
 
-.console-card {
-  margin-top: 24px;
-}
-
-.debug-toolbar {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.debug-select,
-.debug-speaker-input {
-  width: 100%;
-}
-
-.debug-session-bar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-top: 18px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: #f8faff;
-}
-
-.debug-session-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  color: #55627c;
-  font-size: 13px;
-}
-
-.debug-chat-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 18px;
-  margin-top: 18px;
-}
-
-.debug-transcript,
-.debug-composer {
-  min-height: 360px;
-  padding: 18px;
+.debug-entry-card {
+  padding: 20px;
   border-radius: 22px;
-  background: #f8faff;
+  border: 1px solid #e4eaf8;
+  background:
+    radial-gradient(circle at top right, rgba(87, 120, 255, 0.1), transparent 30%),
+    linear-gradient(180deg, #ffffff, #f8fbff);
 }
 
-.debug-message-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.debug-open-btn {
+  border-radius: 999px;
 }
 
-.debug-message {
-  padding: 14px 16px;
+.debug-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.debug-entry-stat {
+  padding: 16px 18px;
   border-radius: 18px;
-  background: #ffffff;
-  border: 1px solid #e6ecfa;
+  background: #f7f9fd;
+  border: 1px solid #e3e9f6;
 }
 
-.debug-message.role-user {
-  background: #eef4ff;
-}
-
-.debug-message.role-assistant {
-  background: #ffffff;
-}
-
-.debug-message.role-system {
-  background: #fff7eb;
-  border-color: #f8dfb4;
-}
-
-.debug-message-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.debug-role {
+.debug-entry-label {
+  display: block;
   font-size: 12px;
-  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #385a9a;
+  color: #7a86a0;
 }
 
-.debug-meta {
-  font-size: 12px;
-  color: #7c88a2;
-}
-
-.debug-message-body {
-  white-space: pre-wrap;
+.debug-entry-value {
+  display: block;
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #24304a;
   word-break: break-word;
-  line-height: 1.7;
-  color: #25324d;
-}
-
-.debug-composer {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.debug-composer-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
 }
 
 .runtime-list {
@@ -1994,29 +1982,88 @@ export default {
   margin-top: 16px;
 }
 
-@media (max-width: 1200px) {
-  .surface-grid,
-  .inventory-grid,
-  .interrupt-summary-grid,
-  .command-meta,
-  .debug-toolbar,
-  .debug-chat-shell {
+@media (max-width: 1360px) {
+  .overview-strip {
+    flex-direction: column;
+  }
+
+  .overview-stats {
+    min-width: 0;
+  }
+
+  .workspace-shell {
     grid-template-columns: 1fr;
   }
 
-  .hero-card {
+  .workspace-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 1200px) {
+  .operation-bar {
     flex-direction: column;
   }
 
-  .hero-meta {
+  .page-actions {
     justify-content: flex-start;
   }
 
-  .debug-session-bar,
-  .debug-composer-actions,
+  .overview-stats,
+  .channel-editor-grid,
+  .observe-grid,
+  .inventory-grid,
+  .interrupt-summary-grid,
+  .command-meta,
+  .debug-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .context-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .workspace-card {
+    min-height: auto;
+  }
+
   .interrupt-control-block {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-wrapper {
+    padding: 0 16px 20px;
+  }
+
+  .operation-bar {
+    padding: 18px 16px 12px;
+  }
+
+  .page-title {
+    font-size: 24px;
+  }
+
+  .overview-strip,
+  .editor-pane,
+  .debug-entry-card {
+    padding: 16px;
+  }
+
+  .context-grid,
+  .inventory-grid,
+  .debug-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .interrupt-device-input {
+    width: 100%;
+  }
+
+  .runtime-item {
+    flex-direction: column;
   }
 }
 </style>

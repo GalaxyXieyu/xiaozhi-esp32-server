@@ -19,6 +19,12 @@ public interface OpenClawConfigService {
 
     List<OpenClawChannelDTO> saveChannels(List<OpenClawChannelDTO> channels, String serverOrigin);
 
+    OpenClawChannelDTO createChannel(OpenClawChannelDTO channel, String serverOrigin);
+
+    OpenClawChannelDTO updateChannel(String channelId, OpenClawChannelDTO channel, String serverOrigin);
+
+    void deleteChannel(String channelId);
+
     OpenClawChannelInventoryDTO getChannelInventory(String channelId);
 
     OpenClawChannelSetupGuideDTO getChannelSetupGuide(String channelId, String channelName, String serverOrigin);

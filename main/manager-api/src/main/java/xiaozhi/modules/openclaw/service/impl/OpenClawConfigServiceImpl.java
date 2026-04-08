@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -68,13 +69,39 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                 normalized.add(normalizedChannel);
             }
         }
-        persistParam(
-                Constant.SERVER_OPENCLAW_CHANNELS,
-                JsonUtils.toJsonString(normalized),
-                "json",
-                "OpenClaw channels"
-        );
+        persistChannels(normalized);
         return normalized;
+    }
+
+    @Override
+    public OpenClawChannelDTO createChannel(OpenClawChannelDTO channel, String serverOrigin) {
+        OpenClawChannelDTO payload = channel == null ? new OpenClawChannelDTO() : channel;
+        payload.setId(StringUtils.trimToEmpty(payload.getId()));
+        if (StringUtils.isBlank(payload.getId())) {
+            payload.setId(generateChannelId(payload.getName(), loadChannels()));
+        }
+        return upsertChannel(payload.getId(), payload, serverOrigin, true);
+    }
+
+    @Override
+    public OpenClawChannelDTO updateChannel(String channelId, OpenClawChannelDTO channel, String serverOrigin) {
+        if (StringUtils.isBlank(channelId)) {
+            throw new IllegalArgumentException("channelId 不能为空");
+        }
+        return upsertChannel(channelId, channel, serverOrigin, false);
+    }
+
+    @Override
+    public void deleteChannel(String channelId) {
+        if (StringUtils.isBlank(channelId)) {
+            throw new IllegalArgumentException("channelId 不能为空");
+        }
+        List<OpenClawChannelDTO> channels = loadChannels();
+        boolean removed = channels.removeIf(item -> StringUtils.equals(item.getId(), channelId));
+        if (!removed) {
+            throw new IllegalStateException("未找到对应的 OpenClaw channel");
+        }
+        persistChannels(channels);
     }
 
     @Override
@@ -170,6 +197,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                     new String[]{"label", "name", "agentName", "displayName", "title", "id"}));
             inventory.setBridges(extractBridges(root));
             inventory.setAccountAgents(extractAccountAgents(root));
+            inventory.setBridgeAgents(extractBridgeAgents(root));
             inventory.setConnectedBridgeCount((int) inventory.getBridges().stream()
                     .filter(item -> Boolean.TRUE.equals(item.getConnected()))
                     .count());
@@ -408,6 +436,47 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return normalized;
     }
 
+    private OpenClawChannelDTO upsertChannel(String channelId,
+                                             OpenClawChannelDTO channel,
+                                             String serverOrigin,
+                                             boolean prependWhenNew) {
+        List<OpenClawChannelDTO> existingChannels = loadChannels();
+        OpenClawChannelDTO payload = channel == null ? new OpenClawChannelDTO() : channel;
+        OpenClawChannelDTO workingCopy = new OpenClawChannelDTO();
+        workingCopy.setId(StringUtils.trimToEmpty(channelId));
+        workingCopy.setName(payload.getName());
+        workingCopy.setBaseUrl(payload.getBaseUrl());
+        workingCopy.setInventoryPath(payload.getInventoryPath());
+        workingCopy.setAccessToken(payload.getAccessToken());
+        workingCopy.setEnabled(payload.getEnabled());
+        workingCopy.setRemark(payload.getRemark());
+
+        OpenClawChannelDTO normalized = normalizeChannel(workingCopy, serverOrigin);
+        if (StringUtils.isBlank(normalized.getName())) {
+            throw new IllegalArgumentException("channel 名称不能为空");
+        }
+
+        boolean matched = false;
+        List<OpenClawChannelDTO> nextChannels = new ArrayList<>();
+        for (OpenClawChannelDTO existing : existingChannels) {
+            if (StringUtils.equals(existing.getId(), normalized.getId())) {
+                nextChannels.add(normalized);
+                matched = true;
+                continue;
+            }
+            nextChannels.add(existing);
+        }
+        if (!matched) {
+            if (prependWhenNew) {
+                nextChannels.add(0, normalized);
+            } else {
+                throw new IllegalStateException("未找到对应的 OpenClaw channel");
+            }
+        }
+        persistChannels(nextChannels);
+        return normalized;
+    }
+
     private OpenClawChannelDTO createTransientChannel(String channelId, String channelName) {
         OpenClawChannelDTO channel = new OpenClawChannelDTO();
         channel.setId(StringUtils.defaultIfBlank(StringUtils.trimToEmpty(channelId), UUID.randomUUID().toString()));
@@ -481,6 +550,16 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         }
     }
 
+    private void persistChannels(List<OpenClawChannelDTO> channels) {
+        List<OpenClawChannelDTO> safeChannels = channels == null ? new ArrayList<>() : channels;
+        persistParam(
+                Constant.SERVER_OPENCLAW_CHANNELS,
+                JsonUtils.toJsonString(safeChannels),
+                "json",
+                "OpenClaw channels"
+        );
+    }
+
     private String buildInventoryUrl(OpenClawChannelDTO channel) {
         return trimTrailingSlash(channel.getBaseUrl()) + normalizeInventoryPath(channel.getInventoryPath());
     }
@@ -507,6 +586,33 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             return "";
         }
         return trimTrailingSlash(serverOrigin) + "/admin/openclaw";
+    }
+
+    private String generateChannelId(String channelName, List<OpenClawChannelDTO> existingChannels) {
+        String base = StringUtils.defaultIfBlank(buildChannelIdSeed(channelName), "channel");
+        String candidate = base;
+        int suffix = 2;
+        while (containsChannelId(existingChannels, candidate)) {
+            candidate = base + "-" + suffix;
+            suffix += 1;
+        }
+        return candidate;
+    }
+
+    private String buildChannelIdSeed(String channelName) {
+        String normalized = StringUtils.trimToEmpty(channelName).toLowerCase(Locale.ROOT);
+        normalized = normalized.replaceAll("[^a-z0-9]+", "-");
+        normalized = normalized.replaceAll("^-+", "");
+        normalized = normalized.replaceAll("-+$", "");
+        normalized = normalized.replaceAll("-{2,}", "-");
+        return normalized;
+    }
+
+    private boolean containsChannelId(List<OpenClawChannelDTO> channels, String channelId) {
+        if (channels == null || StringUtils.isBlank(channelId)) {
+            return false;
+        }
+        return channels.stream().anyMatch(item -> item != null && StringUtils.equals(item.getId(), channelId));
     }
 
     private String buildInstallCommand(String serverUrl, String adminKey, String accountId, String channelName,
@@ -707,6 +813,30 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             ));
         }
         return accountAgents;
+    }
+
+    private Map<String, List<OptionItem>> extractBridgeAgents(Map<String, Object> root) {
+        Object raw = findFirst(root, new String[]{"bridgeAgents", "agentsByBridge"});
+        if (!(raw instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+
+        Map<String, List<OptionItem>> bridgeAgents = new LinkedHashMap<>();
+        Map<String, Object> data = castMap(map);
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            if (StringUtils.isBlank(entry.getKey())) {
+                continue;
+            }
+            Map<String, Object> nested = new LinkedHashMap<>();
+            nested.put("items", entry.getValue());
+            bridgeAgents.put(entry.getKey(), extractOptions(
+                    nested,
+                    new String[]{"items"},
+                    new String[]{"id", "agentId", "peerAgentId", "value", "key"},
+                    new String[]{"label", "name", "agentName", "displayName", "title", "id"}
+            ));
+        }
+        return bridgeAgents;
     }
 
     private Object findFirst(Map<String, Object> root, String[] keys) {

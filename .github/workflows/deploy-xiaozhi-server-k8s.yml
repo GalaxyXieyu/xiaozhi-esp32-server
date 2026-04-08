@@ -1,0 +1,113 @@
+name: Deploy Xiaozhi Server To Sealos
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build and deploy
+        required: true
+        default: main
+  push:
+    branches:
+      - main
+    paths:
+      - 'main/xiaozhi-server/**'
+      - 'Dockerfile-server'
+      - '.github/workflows/deploy-xiaozhi-server-k8s.yml'
+
+concurrency:
+  group: deploy-xiaozhi-server-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build server image and rollout xiaozhi-server
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY_XIAOZHI_SERVER == 'true'
+    permissions:
+      contents: read
+      packages: write
+    environment: production
+    env:
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'ns-lmgpb9nc' }}
+      K8S_DEPLOYMENT: ${{ vars.K8S_XIAOZHI_DEPLOYMENT || 'xiaozhi-server' }}
+      K8S_CONTAINER: ${{ vars.K8S_XIAOZHI_CONTAINER || 'xiaozhi-server' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
+
+      - name: Set image tag
+        run: |
+          IMAGE_REPO="$(printf '%s' 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE_TAG=${IMAGE_REPO}:server-${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_LATEST=${IMAGE_REPO}:server-latest" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push xiaozhi-server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile-server
+          push: true
+          tags: |
+            ${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_LATEST }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=xiaozhi-server
+          cache-to: type=gha,mode=max,scope=xiaozhi-server
+
+      - name: Prepare kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          cat > "$HOME/.kube/config" <<'EOF'
+          ${{ secrets.SEALOS_KUBECONFIG }}
+          EOF
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Rollout deployment
+        env:
+          KUBECONFIG: /home/runner/.kube/config
+        run: |
+          kubectl config current-context
+          kubectl -n "$K8S_NAMESPACE" set image deployment/"$K8S_DEPLOYMENT" "$K8S_CONTAINER"="$IMAGE_TAG"
+          kubectl -n "$K8S_NAMESPACE" patch deployment/"$K8S_DEPLOYMENT" --type=strategic -p "$(cat <<EOF
+          {
+            "spec": {
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "name": "${K8S_CONTAINER}",
+                      "command": ["python", "app.py"],
+                      "args": []
+                    }
+                  ]
+                }
+              }
+            }
+          }
+          EOF
+          )"
+          kubectl -n "$K8S_NAMESPACE" rollout status deployment/"$K8S_DEPLOYMENT" --timeout=300s
+          kubectl -n "$K8S_NAMESPACE" get deployment/"$K8S_DEPLOYMENT" -o wide
+
+      - name: Deployment summary
+        run: |
+          echo "xiaozhi-server deployed to Sealos." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Repository: ${{ github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: ${{ env.IMAGE_TAG }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Namespace: ${{ env.K8S_NAMESPACE }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deployment: ${{ env.K8S_DEPLOYMENT }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Startup: force image default runtime path, no hotfix copy" >> "$GITHUB_STEP_SUMMARY"

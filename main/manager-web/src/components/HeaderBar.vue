@@ -709,6 +709,7 @@ export default {
 
 .equipment-management {
   height: 30px;
+  min-width: 96px;
   border-radius: 15px;
   background: #deeafe;
   display: flex;
@@ -862,9 +863,9 @@ export default {
 
 /* 导航文本样式 - 支持中英文换行 */
 .nav-text {
-  white-space: normal;
+  white-space: nowrap;
   text-align: center;
-  max-width: 80px;
+  max-width: none;
   line-height: 1.2;
 }
 
@@ -875,7 +876,7 @@ export default {
   }
 
   .equipment-management {
-    min-width: 80px;
+    min-width: 88px;
     font-size: 10px;
   }
 }

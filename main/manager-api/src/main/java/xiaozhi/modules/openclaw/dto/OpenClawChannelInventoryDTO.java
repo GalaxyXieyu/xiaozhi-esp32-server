@@ -38,6 +38,9 @@ public class OpenClawChannelInventoryDTO implements Serializable {
     @Schema(description = "按 runtime/account 分组的 agent 列表")
     private Map<String, List<OptionItem>> accountAgents = new LinkedHashMap<>();
 
+    @Schema(description = "按 bridge 分组的 agent 列表")
+    private Map<String, List<OptionItem>> bridgeAgents = new LinkedHashMap<>();
+
     @Schema(description = "在线 bridge 数量")
     private Integer connectedBridgeCount = 0;
 

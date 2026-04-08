@@ -3,6 +3,7 @@ package xiaozhi.modules.openclaw.controller;
 import java.util.List;
 
 import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,6 +55,43 @@ public class OpenClawConfigController {
     public Result<List<OpenClawChannelDTO>> saveChannels(@RequestBody List<OpenClawChannelDTO> channels,
                                                          HttpServletRequest request) {
         return new Result<List<OpenClawChannelDTO>>().ok(openClawConfigService.saveChannels(channels, resolveServerOrigin(request)));
+    }
+
+    @PostMapping("/channels")
+    @Operation(summary = "创建 OpenClaw channel")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawChannelDTO> createChannel(@RequestBody OpenClawChannelDTO channel,
+                                                    HttpServletRequest request) {
+        try {
+            return new Result<OpenClawChannelDTO>().ok(openClawConfigService.createChannel(channel, resolveServerOrigin(request)));
+        } catch (Exception e) {
+            return new Result<OpenClawChannelDTO>().error("创建 OpenClaw channel 失败: " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/channels/{channelId}")
+    @Operation(summary = "更新 OpenClaw channel")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawChannelDTO> updateChannel(@PathVariable String channelId,
+                                                    @RequestBody OpenClawChannelDTO channel,
+                                                    HttpServletRequest request) {
+        try {
+            return new Result<OpenClawChannelDTO>().ok(openClawConfigService.updateChannel(channelId, channel, resolveServerOrigin(request)));
+        } catch (Exception e) {
+            return new Result<OpenClawChannelDTO>().error("更新 OpenClaw channel 失败: " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/channels/{channelId}")
+    @Operation(summary = "删除 OpenClaw channel")
+    @RequiresPermissions("sys:role:normal")
+    public Result<Void> deleteChannel(@PathVariable String channelId) {
+        try {
+            openClawConfigService.deleteChannel(channelId);
+            return new Result<Void>().ok(null);
+        } catch (Exception e) {
+            return new Result<Void>().error("删除 OpenClaw channel 失败: " + e.getMessage());
+        }
     }
 
     @GetMapping("/channels/{channelId}/inventory")

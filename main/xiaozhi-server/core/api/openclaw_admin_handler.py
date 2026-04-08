@@ -482,6 +482,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "agents": [],
                     "bridges": [],
                     "accountAgents": {},
+                    "bridgeAgents": {},
                 },
                 status=400,
             )
@@ -501,6 +502,7 @@ class OpenClawAdminHandler(BaseHandler):
 
             runtime_accounts: list[dict] = []
             account_agents: dict[str, list[dict]] = {}
+            bridge_agents: dict[str, list[dict]] = {}
             merged_agents: list[dict] = []
             seen_runtime_values: set[str] = set()
             seen_agent_values: set[str] = set()
@@ -538,8 +540,11 @@ class OpenClawAdminHandler(BaseHandler):
                         bridge.get("account") or ""
                     ).strip()
                     account_agent_list = self._normalize_agent_options(result.get("agents"))
+                    bridge_key = str(bridge.get("bridgeId") or "").strip()
                     if account_key:
                         account_agents[account_key] = account_agent_list
+                    if bridge_key:
+                        bridge_agents[bridge_key] = account_agent_list
 
                     for option in account_agent_list:
                         if option["value"] in seen_agent_values:
@@ -573,6 +578,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "agents": merged_agents,
                     "bridges": bridges,
                     "accountAgents": account_agents,
+                    "bridgeAgents": bridge_agents,
                     "errorMessage": error_message,
                 }
             )
@@ -588,6 +594,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "agents": [],
                     "bridges": [],
                     "accountAgents": {},
+                    "bridgeAgents": {},
                 },
                 status=400,
             )

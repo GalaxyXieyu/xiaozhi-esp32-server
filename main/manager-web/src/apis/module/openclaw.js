@@ -37,6 +37,68 @@ export default {
                 });
             }).send();
     },
+    createChannel(channel, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels`)
+            .method('POST')
+            .data(channel)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.createChannel(channel, callback, failCallback);
+                });
+            }).send();
+    },
+    updateChannel(channelId, channel, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}`)
+            .method('PUT')
+            .data(channel)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.updateChannel(channelId, channel, callback, failCallback);
+                });
+            }).send();
+    },
+    deleteChannel(channelId, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}`)
+            .method('DELETE')
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.deleteChannel(channelId, callback, failCallback);
+                });
+            }).send();
+    },
     getChannelInventory(channelId, callback, failCallback) {
         RequestService.sendRequest()
             .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/inventory`)

@@ -27,6 +27,7 @@ class OpenClawBridgeClient:
         self.lock = asyncio.Lock()
         self.pending_results: Dict[int, asyncio.Future] = {}
         self.next_id = 1
+        self._bound_agent_id: Optional[str] = None
 
     def relay_chat_enabled(self) -> bool:
         return self.enabled and bool(self.config.get("relay_chat", False))
@@ -80,6 +81,7 @@ class OpenClawBridgeClient:
             websocket = self.websocket
             self.websocket = None
             self.ready = False
+            self._bound_agent_id = None
 
             pending_results = list(self.pending_results.values())
             self.pending_results.clear()
@@ -103,6 +105,7 @@ class OpenClawBridgeClient:
                 pass
 
     async def chat(self, text: str) -> Any:
+        await self._ensure_agent_bound()
         params = self._build_peer_context()
         params["text"] = text
         return await self.call(
@@ -129,6 +132,22 @@ class OpenClawBridgeClient:
         if isinstance(result, dict):
             return result
         return {"ok": True, "result": result, "agentId": agent_id}
+
+    async def _ensure_agent_bound(self) -> None:
+        binding = self._get_configured_agent_binding()
+        if binding is None:
+            return
+        agent_id = binding["agentId"]
+        if self._bound_agent_id == agent_id:
+            return
+        result = await self.bind_peer_agent(
+            agent_id=agent_id,
+            agent_name=binding.get("agentName"),
+        )
+        self._bound_agent_id = agent_id
+        self.logger.bind(tag=TAG).info(
+            f"OpenClaw bridge 自动绑定 agent 完成: agent={agent_id}, result={result}"
+        )
 
     async def call(self, method: str, params: Optional[Dict[str, Any]] = None) -> Any:
         if not method:
@@ -220,6 +239,7 @@ class OpenClawBridgeClient:
                     pass
             self.websocket = None
             self.ready = False
+            self._bound_agent_id = None
             pending_results = list(self.pending_results.values())
             self.pending_results.clear()
 
@@ -269,6 +289,22 @@ class OpenClawBridgeClient:
         if speaker:
             params["speaker"] = speaker
         return params
+
+    def _get_configured_agent_binding(self) -> Optional[Dict[str, str]]:
+        binding = self.conn.config.get("openclaw_binding") or {}
+        if not isinstance(binding, dict):
+            return None
+        agent_type = str(binding.get("agentType") or "").strip()
+        agent_id = str(binding.get("openclawAgentId") or "").strip()
+        if agent_type and agent_type != "openclaw":
+            return None
+        if not agent_id:
+            return None
+        agent_name = str(binding.get("openclawAgentName") or "").strip()
+        return {
+            "agentId": agent_id,
+            "agentName": agent_name,
+        }
 
     def _resolve_peer_id(
         self,

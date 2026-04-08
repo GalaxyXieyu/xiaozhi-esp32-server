@@ -17,6 +17,7 @@ class OpenClawHubSession:
         self.hub = getattr(getattr(conn, "server", None), "openclaw_hub", None)
         self.enabled = bool(self.config.get("enabled", False) and self.hub)
         self._session_started = False
+        self._bound_agent_id: str | None = None
 
     def relay_chat_enabled(self) -> bool:
         return self.enabled and bool(self.config.get("relay_chat", False))
@@ -59,9 +60,11 @@ class OpenClawHubSession:
             self.logger.bind(tag=TAG).warning(f"OpenClaw sessionEnded 调用失败: {e}")
         finally:
             self._session_started = False
+            self._bound_agent_id = None
 
     async def chat(self, text: str) -> Any:
         await self._ensure_session_started()
+        await self._ensure_agent_bound()
         params = self._build_peer_context()
         params["text"] = text
         self.logger.bind(tag=TAG).info(
@@ -105,6 +108,25 @@ class OpenClawHubSession:
             return result
         return {"ok": True, "result": result, "agentId": agent_id}
 
+    async def _ensure_agent_bound(self):
+        binding = self._get_configured_agent_binding()
+        if binding is None:
+            return
+        agent_id = binding["agentId"]
+        if self._bound_agent_id == agent_id:
+            return
+
+        result = await self.bind_peer_agent(
+            agent_id=agent_id,
+            agent_name=binding.get("agentName"),
+        )
+        self._bound_agent_id = agent_id
+        self.logger.bind(tag=TAG).info(
+            "OpenClaw hub 自动绑定 agent 完成: "
+            f"account={self._resolve_account()}, peer={self._build_peer_context()['peerId']}, "
+            f"agent={agent_id}, result={result}"
+        )
+
     async def _ensure_session_started(self):
         if self._session_started or not self.config.get("session_events_enabled", True):
             return
@@ -122,6 +144,22 @@ class OpenClawHubSession:
             account=self._resolve_account(),
         )
         self._session_started = True
+
+    def _get_configured_agent_binding(self) -> dict[str, str] | None:
+        binding = self.conn.config.get("openclaw_binding") or {}
+        if not isinstance(binding, dict):
+            return None
+        agent_type = str(binding.get("agentType") or "").strip()
+        agent_id = str(binding.get("openclawAgentId") or "").strip()
+        if agent_type and agent_type != "openclaw":
+            return None
+        if not agent_id:
+            return None
+        agent_name = str(binding.get("openclawAgentName") or "").strip()
+        return {
+            "agentId": agent_id,
+            "agentName": agent_name,
+        }
 
     def _resolve_bridge_id(self) -> str | None:
         bridge_id = (self.config.get("bridge_id") or "").strip()

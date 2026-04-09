@@ -1,36 +1,21 @@
 <template>
   <section class="detail-shell">
-    <div class="detail-topbar">
-      <div class="detail-header">
-        <div class="detail-title-block">
-          <el-button class="back-btn" type="text" @click="$emit('back')">
-            <i class="el-icon-arrow-left" />
-            返回 Channel 列表
-          </el-button>
-          <div class="detail-eyebrow">当前渠道</div>
-          <h2 class="detail-title">{{ channel.name || "未命名 Channel" }}</h2>
-          <p class="detail-description">
-            先从下方选择 Agent，再调试。
-          </p>
-        </div>
+    <div class="detail-toolbar">
+      <div class="detail-main">
+        <el-button class="back-btn" type="text" @click="$emit('back')">
+          <i class="el-icon-arrow-left" />
+          返回 Channel 列表
+        </el-button>
+        <h2 class="detail-title">{{ channel.name || "未命名 Channel" }}</h2>
+      </div>
 
-        <div class="detail-pills">
-          <div class="detail-pill">
-            <span>可调试 Agent</span>
-            <strong>{{ agentCards.length }}</strong>
-          </div>
-          <div class="detail-pill">
-            <span>业务绑定</span>
-            <strong>{{ filteredBindings.length }}</strong>
-          </div>
-          <div class="detail-pill">
-            <span>当前 Runtime</span>
-            <strong>{{ selectedRuntimeLabel || "自动选择" }}</strong>
-          </div>
-          <el-tag size="medium" :type="inventoryTagType" effect="plain">
-            {{ inventoryStatusText }}
-          </el-tag>
-        </div>
+      <div class="detail-meta">
+        <span class="detail-chip">{{ agentCards.length }} Agent</span>
+        <span class="detail-chip">{{ filteredBindings.length }} 绑定</span>
+        <span class="detail-chip">{{ selectedRuntimeLabel || "自动 Runtime" }}</span>
+        <el-tag size="mini" :type="inventoryTagType" effect="plain">
+          {{ inventoryStatusText }}
+        </el-tag>
       </div>
     </div>
 
@@ -373,97 +358,75 @@ export default {
 .detail-shell {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
-.detail-header {
+.detail-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 28px;
+  align-items: center;
+  gap: 14px;
   flex-wrap: wrap;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid #e4ebf7;
-  box-shadow: 0 18px 40px rgba(124, 140, 177, 0.08);
-  border-radius: 30px;
-  padding: 28px 24px;
+  box-shadow: 0 14px 32px rgba(124, 140, 177, 0.08);
+  border-radius: 24px;
+  padding: 12px 16px;
 }
 
 .back-btn {
   padding: 0;
   color: #4662a8;
-  margin-bottom: 8px;
 }
 
-.detail-eyebrow,
-.panel-eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7c8ba7;
+.detail-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
 }
 
 .detail-title {
-  margin: 8px 0 4px;
-  font-size: 28px;
-  line-height: 1.2;
-  color: #18233d;
-}
-
-.detail-description {
-  max-width: 560px;
   margin: 0;
-  color: #66758f;
-  line-height: 1.5;
+  font-size: 24px;
+  line-height: 1;
+  color: #18233d;
+  white-space: nowrap;
 }
 
-.detail-title-block {
-  max-width: 560px;
-  flex: 1;
-  min-width: 280px;
-}
-
-.detail-pills {
+.detail-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-  align-items: flex-start;
-  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
 }
 
-.detail-pill,
-.agents-panel {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid #e4ebf7;
-  box-shadow: 0 18px 40px rgba(124, 140, 177, 0.08);
+.detail-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #f4f7fd;
+  border: 1px solid #e3eaf7;
+  color: #52627b;
+  font-size: 13px;
 }
 
-.detail-pill {
-  display: flex;
-  min-width: 136px;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 16px;
-}
-
-.detail-pill span,
+.panel-eyebrow,
 .diagnostic-key {
   display: block;
   color: #7b89a2;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 12px;
   font-size: 11px;
 }
 
-.detail-pill strong {
-  display: block;
-  font-size: 16px;
-  color: #1a2640;
-  line-height: 1.35;
-  word-break: break-word;
+.agents-panel {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e4ebf7;
+  box-shadow: 0 18px 40px rgba(124, 140, 177, 0.08);
 }
 
 .runtime-select {
@@ -691,15 +654,14 @@ export default {
 }
 
 @media (max-width: 1180px) {
-  .detail-header {
+  .detail-toolbar,
+  .detail-main {
     flex-direction: column;
+    align-items: flex-start;
   }
 
-  .detail-pills {
+  .detail-meta {
     width: 100%;
-    justify-content: flex-start;
-    padding-top: 8px;
-    border-top: 1px solid #f0f4fb;
   }
 }
 
@@ -709,7 +671,8 @@ export default {
   }
 
   .detail-title {
-    font-size: 30px;
+    font-size: 22px;
+    white-space: normal;
   }
 
   .agent-grid {

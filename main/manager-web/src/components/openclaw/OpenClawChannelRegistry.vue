@@ -1,30 +1,18 @@
 <template>
   <section class="registry-shell">
-    <div class="registry-hero">
-      <div>
-        <div class="registry-eyebrow">OpenClaw</div>
-        <h2 class="registry-title">先选渠道</h2>
-        <p class="registry-description">点进详情后，再看 Agent、绑定和调试。</p>
+    <div class="registry-toolbar">
+      <div class="toolbar-main">
+        <h2 class="toolbar-title">Channels</h2>
+        <div class="toolbar-stats">
+          <span class="toolbar-stat">{{ channels.length }} 个渠道</span>
+          <span class="toolbar-stat">{{ healthyCount }} 个可调试</span>
+          <span class="toolbar-stat">{{ attentionCount }} 个需处理</span>
+        </div>
       </div>
       <div class="registry-actions">
         <el-button class="ghost-btn" @click="$emit('back')">返回智能体配置</el-button>
         <el-button class="ghost-btn" @click="$emit('refresh')" :loading="loading">刷新</el-button>
         <el-button type="primary" class="create-btn" @click="$emit('create')">新建 Channel</el-button>
-      </div>
-    </div>
-
-    <div class="registry-summary">
-      <div class="summary-card">
-        <span class="summary-label">渠道</span>
-        <strong class="summary-value">{{ channels.length }}</strong>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">可调试</span>
-        <strong class="summary-value">{{ healthyCount }}</strong>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">需处理</span>
-        <strong class="summary-value">{{ attentionCount }}</strong>
       </div>
     </div>
 
@@ -152,85 +140,61 @@ export default {
 .registry-shell {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
 }
 
-.registry-hero {
+.registry-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e2e9f6;
+  box-shadow: 0 14px 32px rgba(123, 140, 179, 0.08);
+}
+
+.toolbar-main {
+  display: flex;
+  align-items: center;
   gap: 18px;
-  padding: 28px 32px;
-  border-radius: 32px;
-  background:
-    radial-gradient(circle at top right, rgba(127, 168, 255, 0.28), transparent 28%),
-    linear-gradient(135deg, rgba(244, 248, 255, 0.98), rgba(255, 255, 255, 0.96));
-  border: 1px solid rgba(212, 223, 243, 0.92);
-  box-shadow: 0 28px 64px rgba(120, 137, 180, 0.12);
+  min-width: 0;
+  flex: 1;
 }
 
-.registry-eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7b8baa;
-}
-
-.registry-title {
-  margin: 10px 0 6px;
-  font-size: 30px;
-  line-height: 1.18;
-  color: #16213a;
-}
-
-.registry-description {
-  max-width: 520px;
+.toolbar-title {
   margin: 0;
-  color: #66758f;
-  line-height: 1.6;
+  font-size: 22px;
+  line-height: 1;
+  color: #16213a;
+  white-space: nowrap;
 }
 
-.registry-actions {
+.toolbar-stats {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
+}
+
+.toolbar-stat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #f4f7fd;
+  border: 1px solid #e3eaf7;
+  color: #50617c;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .ghost-btn,
 .create-btn {
-  height: 40px;
+  height: 36px;
   border-radius: 999px;
-  padding: 0 18px;
-}
-
-.registry-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.summary-card {
-  padding: 16px 20px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #e4ebf7;
-  box-shadow: 0 18px 44px rgba(130, 144, 183, 0.08);
-}
-
-.summary-label {
-  display: block;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #7f8ea7;
-}
-
-.summary-value {
-  display: block;
-  margin-top: 6px;
-  font-size: 26px;
-  color: #16213a;
+  padding: 0 16px;
 }
 
 .channel-grid {
@@ -378,22 +342,19 @@ export default {
 }
 
 @media (max-width: 960px) {
-  .registry-hero {
+  .registry-toolbar,
+  .toolbar-main {
     flex-direction: column;
-    padding: 24px;
+    align-items: flex-start;
   }
 
-  .registry-title {
-    font-size: 28px;
+  .toolbar-title {
+    font-size: 20px;
   }
 
   .registry-actions {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .registry-summary {
-    grid-template-columns: 1fr;
   }
 }
 

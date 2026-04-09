@@ -1,0 +1,82 @@
+::v-deep .openclaw-debug-dialog {
+  width: min(1240px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 24px);
+  margin: 12px auto !important;
+  display: flex;
+  flex-direction: column;
+  border-radius: 30px;
+  overflow: hidden;
+}
+
+::v-deep .openclaw-debug-dialog .el-dialog__header {
+  padding: 24px 28px 0;
+}
+
+::v-deep .openclaw-debug-dialog .el-dialog__title {
+  color: #1b2740;
+  font-weight: 700;
+}
+
+::v-deep .openclaw-debug-dialog .el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px 22px 22px;
+  background: #ffffff;
+}
+
+.debug-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: min(78vh, 820px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.debug-view-switch {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.debug-view-switch-label {
+  color: #62738d;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .debug-shell {
+    height: min(78vh, 880px);
+  }
+}
+
+@media (max-width: 760px) {
+  ::v-deep .openclaw-debug-dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 12px);
+    margin: 6px auto !important;
+  }
+
+  ::v-deep .openclaw-debug-dialog .el-dialog__header {
+    padding: 18px 18px 0;
+  }
+
+  ::v-deep .openclaw-debug-dialog .el-dialog__body {
+    padding: 14px;
+  }
+
+  .debug-shell {
+    height: min(82vh, 920px);
+  }
+
+  .debug-view-switch {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

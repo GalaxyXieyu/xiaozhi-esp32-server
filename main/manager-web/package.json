@@ -10,7 +10,6 @@
   "dependencies": {
     "core-js": "^3.41.0",
     "cross-env": "^7.0.3",
-    "deep-chat": "^2.4.2",
     "dotenv": "^16.5.0",
     "element-ui": "^2.15.14",
     "flyio": "^0.6.14",

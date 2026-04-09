@@ -280,7 +280,7 @@ class OpenClawBridgeClient:
         peer_id = self._resolve_peer_id(device_id, client_id, speaker)
 
         params = {
-            "account": self.config.get("account", "default"),
+            "account": self._resolve_account(),
             "sessionId": self.conn.session_id,
             "deviceId": device_id,
             "clientId": client_id,
@@ -305,6 +305,14 @@ class OpenClawBridgeClient:
             "agentId": agent_id,
             "agentName": agent_name,
         }
+
+    def _resolve_account(self) -> str:
+        binding = self.conn.config.get("openclaw_binding") or {}
+        if isinstance(binding, dict):
+            runtime_account = str(binding.get("runtimeAccount") or "").strip()
+            if runtime_account:
+                return runtime_account
+        return str(self.config.get("account", "default") or "default").strip()
 
     def _resolve_peer_id(
         self,

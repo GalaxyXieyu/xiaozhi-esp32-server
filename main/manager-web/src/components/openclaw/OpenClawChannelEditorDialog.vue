@@ -46,13 +46,13 @@
         <el-collapse-transition>
           <div v-if="showAdvanced" class="advanced-grid">
             <el-form-item label="管理接口基础地址">
-              <el-input v-model.trim="localForm.baseUrl" placeholder="默认自动生成，例如：https://example.com/admin/openclaw" />
+              <el-input v-model.trim="localForm.baseUrl" placeholder="例如：https://example.com/admin/openclaw；留空表示暂不接入" />
             </el-form-item>
             <el-form-item label="Inventory 路径">
               <el-input v-model.trim="localForm.inventoryPath" placeholder="/inventory" />
             </el-form-item>
             <el-form-item label="Access Token">
-              <el-input v-model.trim="localForm.accessToken" show-password placeholder="默认自动注入 server secret" />
+              <el-input v-model.trim="localForm.accessToken" show-password placeholder="可选；未配置时不会自动继承其他 Channel 的凭证" />
             </el-form-item>
           </div>
         </el-collapse-transition>

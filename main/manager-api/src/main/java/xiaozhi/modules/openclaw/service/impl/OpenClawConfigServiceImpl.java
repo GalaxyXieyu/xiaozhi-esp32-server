@@ -67,7 +67,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                     continue;
                 }
                 OpenClawChannelDTO normalizedChannel = normalizeChannel(channel, serverOrigin);
-                if (StringUtils.isBlank(normalizedChannel.getName()) || StringUtils.isBlank(normalizedChannel.getBaseUrl())) {
+                if (StringUtils.isBlank(normalizedChannel.getName())) {
                     continue;
                 }
                 normalized.add(normalizedChannel);
@@ -126,7 +126,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         guide.setChannelId(channel.getId());
         guide.setChannelName(channel.getName());
         guide.setServerUrl(normalizedOrigin);
-        guide.setBaseUrl(channel.getBaseUrl());
+        guide.setBaseUrl(StringUtils.defaultIfBlank(channel.getBaseUrl(), buildDefaultBaseUrl(normalizedOrigin)));
         guide.setInventoryPath(channel.getInventoryPath());
         guide.setDefaultAgentId(defaultAgentId);
         guide.setAccessTokenConfigured(StringUtils.isNotBlank(serverSecret));
@@ -149,6 +149,10 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         }
         if (Boolean.FALSE.equals(channel.getEnabled())) {
             inventory.setErrorMessage("当前 OpenClaw channel 已禁用");
+            return inventory;
+        }
+        if (StringUtils.isBlank(channel.getBaseUrl())) {
+            inventory.setErrorMessage("当前 OpenClaw channel 尚未配置管理接口地址");
             return inventory;
         }
 
@@ -463,17 +467,12 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private OpenClawChannelDTO normalizeChannel(OpenClawChannelDTO channel, String serverOrigin) {
-        String normalizedOrigin = trimTrailingSlash(serverOrigin);
-        String serverSecret = StringUtils.trimToEmpty(sysParamsService.getValue(Constant.SERVER_SECRET, true));
         OpenClawChannelDTO normalized = new OpenClawChannelDTO();
         normalized.setId(StringUtils.defaultIfBlank(channel.getId(), UUID.randomUUID().toString()));
         normalized.setName(StringUtils.trimToEmpty(channel.getName()));
-        normalized.setBaseUrl(StringUtils.defaultIfBlank(
-                trimTrailingSlash(StringUtils.trimToEmpty(channel.getBaseUrl())),
-                buildDefaultBaseUrl(normalizedOrigin)
-        ));
+        normalized.setBaseUrl(trimTrailingSlash(StringUtils.trimToEmpty(channel.getBaseUrl())));
         normalized.setInventoryPath(normalizeInventoryPath(channel.getInventoryPath()));
-        normalized.setAccessToken(StringUtils.defaultIfBlank(StringUtils.trimToEmpty(channel.getAccessToken()), serverSecret));
+        normalized.setAccessToken(StringUtils.trimToEmpty(channel.getAccessToken()));
         normalized.setEnabled(channel.getEnabled() == null ? Boolean.TRUE : channel.getEnabled());
         normalized.setRemark(StringUtils.trimToEmpty(channel.getRemark()));
         return normalized;
@@ -696,11 +695,13 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private Map<String, Object> requestChannelApi(OpenClawChannelDTO channel, String path, HttpMethod method, Object body) {
+        ensureChannelApiConfigured(channel);
         String requestUrl = buildChannelApiUrl(channel, path);
         return requestChannelApiByUrl(channel, requestUrl, method, body);
     }
 
     private Map<String, Object> requestChannelApiByUrl(OpenClawChannelDTO channel, String requestUrl, HttpMethod method, Object body) {
+        ensureChannelApiConfigured(channel);
         HttpEntity<?> requestEntity = body == null
                 ? new HttpEntity<>(buildChannelHeaders(channel))
                 : new HttpEntity<>(body, buildChannelHeaders(channel));
@@ -722,6 +723,12 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             ));
         }
         return payload;
+    }
+
+    private void ensureChannelApiConfigured(OpenClawChannelDTO channel) {
+        if (channel == null || StringUtils.isBlank(channel.getBaseUrl())) {
+            throw new IllegalStateException("当前 OpenClaw channel 尚未配置管理接口地址");
+        }
     }
 
     private Map<String, String> buildVoiceInterruptQuery(OpenClawVoiceInterruptRequestDTO request) {

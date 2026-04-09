@@ -205,6 +205,14 @@
                           show-icon
                           :title="openclawInventory.errorMessage || openclawBinding.errorMessage"
                         />
+                        <el-alert
+                          v-if="openclawBindingStaleWarning"
+                          class="openclaw-alert"
+                          type="warning"
+                          :closable="false"
+                          show-icon
+                          :title="openclawBindingStaleWarning"
+                        />
                       </div>
                     </el-form-item>
                     <el-form-item v-if="!isOpenClawAgent" :label="$t('roleConfig.roleIntroduction') + '：'">
@@ -613,6 +621,33 @@ export default {
         this.openclawBinding.openclawAgentId,
         this.openclawBinding.openclawAgentName
       );
+    },
+    openclawBindingStaleWarning() {
+      const warnings = [];
+      const runtimeAccounts = Array.isArray(this.openclawInventory.runtimeAccounts)
+        ? this.openclawInventory.runtimeAccounts
+        : [];
+      const agents = Array.isArray(this.openclawInventory.agents)
+        ? this.openclawInventory.agents
+        : [];
+
+      if (
+        this.openclawBinding.runtimeAccount &&
+        runtimeAccounts.length &&
+        !runtimeAccounts.some((item) => item.value === this.openclawBinding.runtimeAccount)
+      ) {
+        warnings.push("当前绑定的 runtime/account 已不在最新 inventory 中");
+      }
+
+      if (
+        this.openclawBinding.openclawAgentId &&
+        agents.length &&
+        !agents.some((item) => item.value === this.openclawBinding.openclawAgentId)
+      ) {
+        warnings.push("当前绑定的 OpenClaw Agent 已不在最新 inventory 中，可能是历史脏数据");
+      }
+
+      return warnings.join("；");
     },
     openclawStatusTagType() {
       if (this.isOpenClawAgent && this.openclawInventory.healthy) {

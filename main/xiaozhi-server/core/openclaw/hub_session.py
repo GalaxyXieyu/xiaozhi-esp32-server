@@ -165,7 +165,17 @@ class OpenClawHubSession:
         bridge_id = (self.config.get("bridge_id") or "").strip()
         return bridge_id or None
 
+    def _resolve_bound_runtime_account(self) -> str | None:
+        binding = self.conn.config.get("openclaw_binding") or {}
+        if not isinstance(binding, dict):
+            return None
+        runtime_account = str(binding.get("runtimeAccount") or "").strip()
+        return runtime_account or None
+
     def _resolve_account(self) -> str:
+        bound_account = self._resolve_bound_runtime_account()
+        if bound_account:
+            return bound_account
         return (self.config.get("default_account") or "default").strip()
 
     def _build_peer_context(self) -> dict[str, Any]:

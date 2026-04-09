@@ -84,14 +84,6 @@
             </el-button>
           </div>
 
-          <div v-if="activeStatusEvent" class="status-banner" :class="statusToneClass(activeStatusEvent.tone)">
-            <span class="status-banner-pill">{{ statusToneLabel(activeStatusEvent.tone) }}</span>
-            <div class="status-banner-body">
-              <strong>{{ activeStatusEvent.text }}</strong>
-              <span v-if="activeStatusEvent.meta">{{ activeStatusEvent.meta }}</span>
-            </div>
-          </div>
-
           <div ref="transcript" class="transcript-shell">
             <div v-if="visibleMessages.length" class="message-list">
               <article
@@ -377,24 +369,39 @@ export default {
       },
     },
     visibleStatusEvents() {
-      return Array.isArray(this.debugStatusEvents) ? this.debugStatusEvents.slice(-8) : [];
-    },
-    activeStatusEvent() {
-      const latest = this.visibleStatusEvents.length
-        ? this.visibleStatusEvents[this.visibleStatusEvents.length - 1]
-        : null;
+      const source = Array.isArray(this.debugStatusEvents) ? this.debugStatusEvents.slice(-12) : [];
+      const normalized = source.reduce((list, item) => {
+        const last = list[list.length - 1];
+        const isSameStatus = Boolean(
+          last &&
+          last.text === item.text &&
+          last.meta === item.meta &&
+          last.tone === item.tone &&
+          last.eventType === item.eventType
+        );
+        if (isSameStatus) {
+          list[list.length - 1] = item;
+          return list;
+        }
+        list.push(item);
+        return list;
+      }, []);
+
       if (this.debugPending) {
-        return latest || {
+        const pendingItem = {
           id: "pending-generic",
           text: "调试请求已提交，等待 OpenClaw 处理",
           meta: "",
           tone: "warning",
+          eventType: "pending",
         };
+        const latest = normalized[normalized.length - 1];
+        if (!latest || latest.eventType !== "accepted") {
+          normalized.push(pendingItem);
+        }
       }
-      if (latest && latest.tone === "danger") {
-        return latest;
-      }
-      return null;
+
+      return normalized.slice(-3);
     },
     visibleMessages() {
       const source = Array.isArray(this.debugMessages)
@@ -469,21 +476,6 @@ export default {
     },
     statusToneClass(tone) {
       return `tone-${tone || "info"}`;
-    },
-    statusToneLabel(tone) {
-      if (tone === "success") {
-        return "完成";
-      }
-      if (tone === "warning") {
-        return "运行中";
-      }
-      if (tone === "danger") {
-        return "异常";
-      }
-      if (tone === "primary") {
-        return "已路由";
-      }
-      return "状态";
     },
     playLatestMessage() {
       if (this.latestAssistantText) {

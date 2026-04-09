@@ -891,8 +891,11 @@ export default {
       if (event.type === "browser_audio_ready") {
         this.latestBrowserAudioText = (event.payload && event.payload.text) || this.latestBrowserAudioText;
       }
+      if (!STATUS_EVENT_TYPES.has(event.type)) {
+        return;
+      }
       const statusEvent = this.formatTraceStatus(event);
-      if (!STATUS_EVENT_TYPES.has(event.type) && !statusEvent.text) {
+      if (!statusEvent.text) {
         return;
       }
       this.appendDebugStatus(statusEvent.text, {

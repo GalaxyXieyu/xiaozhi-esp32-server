@@ -267,62 +267,6 @@
   color: #3f6fd8;
 }
 
-.status-banner {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 10px 12px;
-  border-radius: 14px;
-  margin-bottom: 10px;
-  background: #eff5ff;
-  color: #204572;
-}
-
-.status-banner.tone-danger {
-  background: #fff2f0;
-  color: #a13f34;
-}
-
-.status-banner.tone-warning {
-  background: #fff8e7;
-  color: #8d640d;
-}
-
-.status-banner.tone-success {
-  background: #edf9f1;
-  color: #216842;
-}
-
-.status-banner-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 58px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.status-banner-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.status-banner-body strong {
-  font-size: 14px;
-}
-
-.status-banner-body span {
-  color: inherit;
-  opacity: 0.78;
-  font-size: 12px;
-}
-
 .transcript-shell {
   flex: 1;
   min-height: 0;
@@ -401,6 +345,7 @@
   flex-wrap: wrap;
   color: #74849d;
   font-size: 12px;
+  text-align: left;
 }
 
 .message-role {
@@ -416,6 +361,7 @@
   padding: 12px 14px;
   border-radius: 16px;
   box-shadow: 0 8px 20px rgba(27, 50, 83, 0.05);
+  text-align: left;
 }
 
 .message-text {
@@ -423,6 +369,7 @@
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  text-align: left;
 }
 
 .transcript-empty {

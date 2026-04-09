@@ -11,14 +11,6 @@
       </div>
       <div class="stage-toolbar">
         <el-button
-          v-if="hasBrowserAudio"
-          size="small"
-          plain
-          @click="$emit('play-audio')"
-        >
-          播放语音
-        </el-button>
-        <el-button
           size="small"
           type="warning"
           plain
@@ -99,8 +91,19 @@
               <div class="message-avatar">{{ messageAvatar(item.role) }}</div>
               <div class="message-card">
                 <div class="message-head">
-                  <span class="message-role">{{ messageRoleLabel(item.role) }}</span>
-                  <span v-if="item.meta" class="message-meta">{{ item.meta }}</span>
+                  <div class="message-head-main">
+                    <span class="message-role">{{ messageRoleLabel(item.role) }}</span>
+                    <span v-if="item.meta" class="message-meta">{{ item.meta }}</span>
+                  </div>
+                  <el-button
+                    v-if="item.role === 'assistant' && item.text"
+                    class="message-audio-btn"
+                    type="text"
+                    size="mini"
+                    @click="$emit('play-message', item.text)"
+                  >
+                    播放
+                  </el-button>
                 </div>
                 <div class="message-body">{{ item.text }}</div>
               </div>
@@ -196,10 +199,6 @@ export default {
       default: false,
     },
     canSendDirectChat: {
-      type: Boolean,
-      default: false,
-    },
-    hasBrowserAudio: {
       type: Boolean,
       default: false,
     },
@@ -627,12 +626,19 @@ export default {
 .message-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
 }
 
 .message-row.role-user .message-head {
   flex-direction: row-reverse;
+}
+
+.message-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .message-role {
@@ -643,6 +649,17 @@ export default {
 .message-meta {
   color: #7a88a0;
   font-size: 13px;
+}
+
+.message-audio-btn {
+  flex: 0 0 auto;
+  padding: 0;
+  color: #4a6bb3;
+}
+
+.message-audio-btn:hover,
+.message-audio-btn:focus {
+  color: #2f57a6;
 }
 
 .message-body {

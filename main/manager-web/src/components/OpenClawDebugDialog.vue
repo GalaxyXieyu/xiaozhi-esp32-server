@@ -22,7 +22,6 @@
         :input-text="debugForm.inputText"
         :debug-sending="debugSending"
         :can-send-direct-chat="canSendDirectChat"
-        :has-browser-audio="Boolean(latestBrowserAudioText)"
         :debug-pending="debugPending"
         @create-session="createDebugSession"
         @clear-session="clearDebugSession"
@@ -30,7 +29,7 @@
         @delete-history="deleteDebugHistory"
         @update:input-text="updateDebugInputText"
         @send="sendDirectChat"
-        @play-audio="playLatestBrowserAudio"
+        @play-message="playDebugMessageAudio"
       />
 
       <OpenClawDebugControlPanel
@@ -782,8 +781,13 @@ export default {
         const snapshot = data.data || {};
         const events = Array.isArray(snapshot.events) ? snapshot.events : [];
         events.forEach((event) => this.consumeTraceEvent(event));
-        if (Number.isInteger(snapshot.nextSeq)) {
-          this.debugTraceSeq = snapshot.nextSeq;
+        const maxEventSeq = events.reduce((maxSeq, event) => {
+          const seq = Number(event && event.seq);
+          return Number.isFinite(seq) && seq > maxSeq ? seq : maxSeq;
+        }, this.debugTraceSeq);
+        this.debugTraceSeq = maxEventSeq;
+        if (snapshot.latestReplyText) {
+          this.syncReplyFromSnapshot(snapshot);
         }
         if (snapshot.browserAudio && snapshot.browserAudio.ready && snapshot.browserAudio.text) {
           this.latestBrowserAudioText = snapshot.browserAudio.text;
@@ -800,6 +804,17 @@ export default {
           eventType: "trace_failed",
         });
         this.stopDebugPolling();
+      });
+    },
+    syncReplyFromSnapshot(snapshot = {}) {
+      const replyText = typeof snapshot.latestReplyText === "string" ? snapshot.latestReplyText.trim() : "";
+      if (!replyText) {
+        return;
+      }
+      const messageId = `snapshot-reply-${this.debugForm.debugSessionId}-${snapshot.updatedAt || replyText}`;
+      this.appendDebugMessage("assistant", replyText, {
+        id: messageId,
+        meta: [snapshot.agentName || snapshot.agentId, snapshot.status].filter(Boolean).join(" / "),
       });
     },
     formatTraceStatus(event) {
@@ -898,9 +913,10 @@ export default {
         eventType: event.type,
       });
     },
-    playLatestBrowserAudio() {
-      if (!this.latestBrowserAudioText) {
-        this.$message.warning("当前还没有可播放的浏览器语音");
+    playDebugMessageAudio(text) {
+      const playbackText = typeof text === "string" ? text.trim() : "";
+      if (!playbackText) {
+        this.$message.warning("当前消息没有可播放的内容");
         return;
       }
       if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
@@ -908,7 +924,7 @@ export default {
         return;
       }
       this.stopBrowserAudio();
-      const utterance = new window.SpeechSynthesisUtterance(this.latestBrowserAudioText);
+      const utterance = new window.SpeechSynthesisUtterance(playbackText);
       utterance.lang = "zh-CN";
       window.speechSynthesis.speak(utterance);
     },

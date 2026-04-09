@@ -114,6 +114,13 @@
                 :value="item.value"
               />
             </el-select>
+            <div v-if="selectedAgentNeedsInventorySync" class="field-hint warning">
+              当前 Agent 来自业务绑定，inventory 还没回传它。可先保留该选择，但要等对应 runtime 有在线 bridge 后才能真正调试。
+            </div>
+          </div>
+
+          <div v-if="!hasAvailableBridge" class="runtime-warning">
+            当前 runtime 没有在线的 OpenClaw bridge，暂时不能发送调试消息。
           </div>
 
           <div class="field-block">
@@ -324,21 +331,49 @@ export default {
     currentDebugAgentOptions() {
       const bridgeKey = this.debugForm.bridgeId;
       const bridgeAgents = (this.inventory.bridgeAgents && this.inventory.bridgeAgents[bridgeKey]) || [];
+      let options = [];
       if (Array.isArray(bridgeAgents) && bridgeAgents.length) {
-        return bridgeAgents;
+        options = bridgeAgents;
+      } else {
+        const accountKey = this.debugForm.account;
+        const accountAgents = (this.inventory.accountAgents && this.inventory.accountAgents[accountKey]) || [];
+        if (Array.isArray(accountAgents) && accountAgents.length) {
+          options = accountAgents;
+        } else {
+          options = this.agentItems;
+        }
       }
-      const accountKey = this.debugForm.account;
-      const accountAgents = (this.inventory.accountAgents && this.inventory.accountAgents[accountKey]) || [];
-      if (Array.isArray(accountAgents) && accountAgents.length) {
-        return accountAgents;
+
+      const normalized = Array.isArray(options) ? [...options] : [];
+      const routedAgentId = (this.routePrefill && this.routePrefill.openclawAgentId) || "";
+      if (routedAgentId && !normalized.some((item) => item.value === routedAgentId)) {
+        normalized.unshift({
+          value: routedAgentId,
+          label: (this.routePrefill && this.routePrefill.openclawAgentName) || routedAgentId,
+          ghost: true,
+        });
       }
-      return this.agentItems;
+      return normalized;
+    },
+    hasAvailableBridge() {
+      if (!this.debugForm.account) {
+        return this.bridgeItems.some((item) => item.connected);
+      }
+      return this.bridgeOptions.some((item) => item.connected);
+    },
+    selectedAgentNeedsInventorySync() {
+      if (!this.debugForm.agentId) {
+        return false;
+      }
+      const matched = this.currentDebugAgentOptions.find((item) => item.value === this.debugForm.agentId);
+      return Boolean(matched && matched.ghost);
     },
     canSendDirectChat() {
       return Boolean(
         this.channelId &&
         this.debugForm.account &&
         this.debugForm.agentId &&
+        this.hasAvailableBridge &&
         this.debugForm.inputText &&
         this.debugForm.inputText.trim()
       );
@@ -615,6 +650,10 @@ export default {
     },
     sendDirectChat() {
       if (!this.canSendDirectChat) {
+        if (!this.hasAvailableBridge) {
+          this.$message.warning("当前 runtime 没有在线的 OpenClaw bridge，暂时不能调试");
+          return;
+        }
         this.$message.warning("请先选择 OpenClaw Agent 并填写测试消息");
         return;
       }
@@ -856,6 +895,28 @@ export default {
 
 .field-select {
   width: 100%;
+}
+
+.field-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6f7f99;
+}
+
+.field-hint.warning,
+.runtime-warning {
+  color: #b26a19;
+}
+
+.runtime-warning {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #f2d29d;
+  background: #fff8ea;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .composer-footer {

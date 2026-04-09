@@ -375,11 +375,18 @@ export default {
         : [];
       return source.reduce((list, item) => {
         const last = list[list.length - 1];
-        if (
+        const sameAssistantTurn = Boolean(
           last &&
           item.role === "assistant" &&
           last.role === "assistant" &&
-          String(last.text || "").trim() === String(item.text || "").trim()
+          String(last.text || "").trim() === String(item.text || "").trim() &&
+          (
+            (last.turnId && item.turnId && last.turnId === item.turnId) ||
+            (!last.turnId && !item.turnId)
+          )
+        );
+        if (
+          sameAssistantTurn
         ) {
           list[list.length - 1] = item;
           return list;

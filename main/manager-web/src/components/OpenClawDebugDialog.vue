@@ -111,6 +111,88 @@ const formatHistoryTime = (timestamp) => {
   return `${date.getMonth() + 1}/${date.getDate()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
+const normalizeDebugMessage = (item = {}) => {
+  const role = typeof item.role === "string" ? item.role : "";
+  const text = typeof item.text === "string" ? item.text : "";
+  if (!["user", "assistant", "system"].includes(role) || !text.trim()) {
+    return null;
+  }
+  return {
+    id: typeof item.id === "string" ? item.id : "",
+    role,
+    text,
+    meta: typeof item.meta === "string" ? item.meta : "",
+    turnId: typeof item.turnId === "string" ? item.turnId : "",
+  };
+};
+
+const sanitizeDebugMessages = (messages = []) => {
+  const seenIds = new Set();
+  return (Array.isArray(messages) ? messages : []).reduce((list, rawItem) => {
+    const item = normalizeDebugMessage(rawItem);
+    if (!item) {
+      return list;
+    }
+    if (item.id && seenIds.has(item.id)) {
+      return list;
+    }
+    if (item.id) {
+      seenIds.add(item.id);
+    }
+
+    const last = list[list.length - 1];
+    const sameAssistantTurn = Boolean(
+      last &&
+      last.role === "assistant" &&
+      item.role === "assistant" &&
+      String(last.text || "").trim() === String(item.text || "").trim() &&
+      (
+        (last.turnId && item.turnId && last.turnId === item.turnId) ||
+        (!last.turnId && !item.turnId)
+      )
+    );
+    if (sameAssistantTurn) {
+      list[list.length - 1] = item;
+      return list;
+    }
+
+    list.push(item);
+    return list;
+  }, []);
+};
+
+const normalizeDebugStatus = (item = {}) => {
+  const text = typeof item.text === "string" ? item.text : "";
+  if (!text.trim()) {
+    return null;
+  }
+  return {
+    id: typeof item.id === "string" ? item.id : "",
+    text,
+    meta: typeof item.meta === "string" ? item.meta : "",
+    tone: typeof item.tone === "string" ? item.tone : "info",
+    eventType: typeof item.eventType === "string" ? item.eventType : "system",
+  };
+};
+
+const sanitizeDebugStatuses = (events = []) => {
+  const seenIds = new Set();
+  return (Array.isArray(events) ? events : []).reduce((list, rawItem) => {
+    const item = normalizeDebugStatus(rawItem);
+    if (!item) {
+      return list;
+    }
+    if (item.id && seenIds.has(item.id)) {
+      return list;
+    }
+    if (item.id) {
+      seenIds.add(item.id);
+    }
+    list.push(item);
+    return list;
+  }, []);
+};
+
 const normalizeHistoryEntry = (item = {}) => ({
   sessionId: typeof item.sessionId === "string" ? item.sessionId : "",
   account: typeof item.account === "string" ? item.account : "",
@@ -125,8 +207,8 @@ const normalizeHistoryEntry = (item = {}) => ({
   traceNextSeq: Number.isInteger(item.traceNextSeq) ? item.traceNextSeq : 0,
   latestBrowserAudioText: typeof item.latestBrowserAudioText === "string" ? item.latestBrowserAudioText : "",
   updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),
-  messages: Array.isArray(item.messages) ? item.messages.slice(-MAX_DEBUG_HISTORY_MESSAGES) : [],
-  statusEvents: Array.isArray(item.statusEvents) ? item.statusEvents.slice(-MAX_DEBUG_STATUS_EVENTS) : [],
+  messages: sanitizeDebugMessages(item.messages).slice(-MAX_DEBUG_HISTORY_MESSAGES),
+  statusEvents: sanitizeDebugStatuses(item.statusEvents).slice(-MAX_DEBUG_STATUS_EVENTS),
 });
 
 export default {
@@ -648,8 +730,8 @@ export default {
       this.syncDebugConnection();
       this.syncDebugAgent();
       this.debugForm.debugSessionId = item.sessionId;
-      this.debugMessages = Array.isArray(item.messages) ? item.messages : [];
-      this.debugStatusEvents = Array.isArray(item.statusEvents) ? item.statusEvents : [];
+      this.debugMessages = sanitizeDebugMessages(item.messages);
+      this.debugStatusEvents = sanitizeDebugStatuses(item.statusEvents);
       this.activeDebugTurnId = "";
       this.debugTraceSeq = Number.isInteger(item.traceNextSeq) ? item.traceNextSeq : 0;
       this.latestBrowserAudioText = item.latestBrowserAudioText || "";

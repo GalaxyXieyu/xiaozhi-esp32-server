@@ -38,31 +38,37 @@
           <el-switch v-model="localForm.enabled" />
         </div>
 
-        <button type="button" class="editor-toggle" @click="showAdvanced = !showAdvanced">
-          <span>高级配置</span>
-          <i :class="showAdvanced ? 'el-icon-arrow-up' : 'el-icon-arrow-down'" />
-        </button>
+        <div v-if="!isEditMode" class="create-hint">
+          创建后会自动生成当前服务的本地接入命令。先完成接入，再检测连接并加载这个 Channel 的 Agent。
+        </div>
 
-        <el-collapse-transition>
-          <div v-if="showAdvanced" class="advanced-grid">
-            <el-form-item label="管理接口基础地址">
-              <el-input v-model.trim="localForm.baseUrl" placeholder="例如：https://example.com/admin/openclaw；留空表示暂不接入" />
-            </el-form-item>
-            <el-form-item label="Inventory 路径">
-              <el-input v-model.trim="localForm.inventoryPath" placeholder="/inventory" />
-            </el-form-item>
-            <el-form-item label="Access Token">
-              <el-input v-model.trim="localForm.accessToken" show-password placeholder="可选；未配置时不会自动继承其他 Channel 的凭证" />
-            </el-form-item>
-          </div>
-        </el-collapse-transition>
+        <template v-else>
+          <button type="button" class="editor-toggle" @click="showAdvanced = !showAdvanced">
+            <span>高级配置</span>
+            <i :class="showAdvanced ? 'el-icon-arrow-up' : 'el-icon-arrow-down'" />
+          </button>
+
+          <el-collapse-transition>
+            <div v-if="showAdvanced" class="advanced-grid">
+              <el-form-item label="管理接口基础地址">
+                <el-input v-model.trim="localForm.baseUrl" placeholder="留空时恢复为当前服务的本地 OpenClaw 接入地址" />
+              </el-form-item>
+              <el-form-item label="Inventory 路径">
+                <el-input v-model.trim="localForm.inventoryPath" placeholder="/inventory" />
+              </el-form-item>
+              <el-form-item label="Access Token">
+                <el-input v-model.trim="localForm.accessToken" show-password placeholder="留空时使用本地默认鉴权；自定义远端地址时请按需填写" />
+              </el-form-item>
+            </div>
+          </el-collapse-transition>
+        </template>
       </el-form>
     </div>
 
     <span slot="footer" class="dialog-footer">
       <el-button @click="handleClose">取消</el-button>
       <el-button type="primary" :loading="saving" @click="submit">
-        {{ isEditMode ? "保存修改" : "创建 Channel" }}
+        {{ isEditMode ? "保存修改" : "创建并进入接入" }}
       </el-button>
     </span>
   </el-dialog>
@@ -142,7 +148,7 @@ export default {
         enabled: source.enabled !== false,
         remark: source.remark || "",
       };
-      this.showAdvanced = Boolean(
+      this.showAdvanced = this.isEditMode && Boolean(
         this.localForm.baseUrl ||
         this.localForm.accessToken ||
         (this.localForm.inventoryPath && this.localForm.inventoryPath !== "/inventory")
@@ -210,6 +216,16 @@ export default {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.create-hint {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #eef4ff, #f7faff);
+  border: 1px solid #dbe6fb;
+  color: #55657f;
+  line-height: 1.7;
 }
 
 .advanced-grid {

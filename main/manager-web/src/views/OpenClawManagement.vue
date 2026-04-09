@@ -536,7 +536,7 @@ export default {
         }
         this.editorVisible = false;
         const saved = data.data || {};
-        this.$message.success(this.editorMode === "edit" ? "Channel 已更新" : "Channel 已创建");
+        this.$message.success(this.editorMode === "edit" ? "Channel 已更新" : "Channel 已创建，请先完成本地接入");
         this.loadChannels(saved.id || payload.id || "");
       };
       const onFail = ({ data }) => {

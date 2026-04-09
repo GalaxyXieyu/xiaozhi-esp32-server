@@ -1,5 +1,7 @@
 本文档是开发类文档，如需部署小智服务端，[点击这里查看部署教程](../../README.md#%E9%83%A8%E7%BD%B2%E6%96%87%E6%A1%A3)
 
+根仓如果存在 `scripts/dev-stack.sh`，本地联调优先使用该统一入口脚本。
+
 # xiaozhi
 
 ## Project setup

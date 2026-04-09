@@ -1,4 +1,5 @@
 # Docker安装全模块
+# 根仓如果存在 scripts/dev-stack.sh，建议优先通过统一脚本启动本文件
 
 version: '3'
 services:

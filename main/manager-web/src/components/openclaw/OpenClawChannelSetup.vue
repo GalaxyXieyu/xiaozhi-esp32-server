@@ -72,6 +72,14 @@
         </el-button>
       </div>
     </section>
+
+    <div v-if="showConnectionFeedback" class="detect-feedback" :class="`is-${feedbackStatus}`">
+      <i class="detect-feedback-icon" :class="feedbackIconClass" />
+      <div>
+        <div class="detect-feedback-title">{{ feedbackTitle }}</div>
+        <div v-if="feedbackDescription" class="detect-feedback-copy">{{ feedbackDescription }}</div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -94,6 +102,10 @@ export default {
     inventoryLoading: {
       type: Boolean,
       default: false,
+    },
+    connectionFeedback: {
+      type: Object,
+      default: () => ({}),
     },
   },
   computed: {
@@ -120,6 +132,67 @@ export default {
         return "warning";
       }
       return "info";
+    },
+    feedbackStatus() {
+      if (this.inventoryLoading) {
+        return "checking";
+      }
+      return this.connectionFeedback && this.connectionFeedback.status
+        ? this.connectionFeedback.status
+        : "idle";
+    },
+    showConnectionFeedback() {
+      return this.feedbackStatus !== "idle";
+    },
+    feedbackTitle() {
+      if (this.feedbackStatus === "checking") {
+        return "正在检测连接状态";
+      }
+      if (this.feedbackStatus === "success") {
+        return "连接检测通过";
+      }
+      if (this.feedbackStatus === "warning") {
+        return "连接检测未通过";
+      }
+      return "";
+    },
+    feedbackDescription() {
+      if (this.feedbackStatus === "checking") {
+        return "会向当前 Channel 的 inventory 接口拉取最新状态。";
+      }
+      const message = this.connectionFeedback && this.connectionFeedback.message
+        ? this.connectionFeedback.message
+        : "";
+      const checkedAt = this.connectionFeedback && this.connectionFeedback.checkedAt
+        ? `最近检测时间：${this.formatCheckedAt(this.connectionFeedback.checkedAt)}`
+        : "";
+      if (message && checkedAt) {
+        return `${message} ${checkedAt}`;
+      }
+      return message || checkedAt;
+    },
+    feedbackIconClass() {
+      if (this.feedbackStatus === "checking") {
+        return "el-icon-loading";
+      }
+      if (this.feedbackStatus === "success") {
+        return "el-icon-success";
+      }
+      if (this.feedbackStatus === "warning") {
+        return "el-icon-warning";
+      }
+      return "";
+    },
+  },
+  methods: {
+    formatCheckedAt(value) {
+      const date = value ? new Date(value) : null;
+      if (!date || Number.isNaN(date.getTime())) {
+        return "";
+      }
+      return date.toLocaleString("zh-CN", {
+        hour12: false,
+      });
     },
   },
 };
@@ -274,6 +347,49 @@ export default {
 .detect-actions {
   display: flex;
   align-items: center;
+}
+
+.detect-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid #e4ebf7;
+  background: rgba(255, 255, 255, 0.96);
+  color: #4f5f7c;
+}
+
+.detect-feedback.is-checking {
+  background: #f5f8ff;
+  border-color: #d9e5fb;
+  color: #4266a8;
+}
+
+.detect-feedback.is-success {
+  background: #f3fbf4;
+  border-color: #cfe5d2;
+  color: #2f7b45;
+}
+
+.detect-feedback.is-warning {
+  background: #fff8ed;
+  border-color: #f5d6aa;
+  color: #9a6424;
+}
+
+.detect-feedback-icon {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.detect-feedback-title {
+  font-weight: 600;
+}
+
+.detect-feedback-copy {
+  margin-top: 6px;
+  line-height: 1.7;
 }
 
 @media (max-width: 960px) {

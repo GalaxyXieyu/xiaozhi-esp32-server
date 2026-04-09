@@ -124,6 +124,34 @@
           </div>
 
           <div class="field-block">
+            <label class="field-label">真实设备上下文</label>
+            <el-select
+              v-model="debugForm.connectionKey"
+              class="field-select"
+              filterable
+              clearable
+              :loading="connectionsLoading"
+              :disabled="!connectionItems.length"
+              placeholder="选择在线连接，让 subagent 主动推送命中真实设备"
+              @change="handleConnectionChange"
+            >
+              <el-option
+                v-for="item in connectionItems"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+            <div class="field-hint">
+              {{
+                hasConnectionContext
+                  ? `当前会把 sessionId/deviceId 透传给调试链路。若 subagent 调用 xiaozhi_push_text，会优先命中 ${currentConnectionLabel}。`
+                  : "未选择真实设备时，当前调试只在后台链路里流转；subagent 的主动推送不会落到真实设备。"
+              }}
+            </div>
+          </div>
+
+          <div class="field-block">
             <label class="field-label">测试输入</label>
             <el-input
               v-model="debugForm.inputText"
@@ -136,7 +164,7 @@
           </div>
 
           <div class="composer-footer">
-            <span class="composer-note">消息只在后台调试链路中流转，不会推送给真实设备。</span>
+            <span class="composer-note">{{ composerNote }}</span>
             <el-button type="primary" :loading="debugSending" :disabled="!canSendDirectChat" @click="sendDirectChat">
               发送测试消息
             </el-button>
@@ -153,6 +181,10 @@
               <div class="context-row">
                 <span class="context-key">当前 Bridge</span>
                 <span class="context-value">{{ currentBridgeLabel }}</span>
+              </div>
+              <div class="context-row">
+                <span class="context-key">目标设备</span>
+                <span class="context-value">{{ currentConnectionLabel }}</span>
               </div>
               <div v-if="showBridgeSelector" class="field-block slim">
                 <label class="field-label">Bridge</label>
@@ -216,12 +248,16 @@ import Api from "@/apis/api";
 
 const createDebugSessionId = () => `web-debug-${Date.now()}`;
 const DEBUG_HISTORY_PREFIX = "openclaw-debug-history:";
+const buildConnectionKey = (item = {}) => `${item.sessionId || ""}::${item.deviceId || ""}`;
 
 const createEmptyDebugForm = () => ({
   account: "",
   bridgeId: "",
   agentId: "",
   agentName: "",
+  connectionKey: "",
+  sessionId: "",
+  deviceId: "",
   speaker: "后台调试",
   inputText: "",
   debugSessionId: createDebugSessionId(),
@@ -264,6 +300,14 @@ export default {
     inventory: {
       type: Object,
       default: () => ({}),
+    },
+    connections: {
+      type: Array,
+      default: () => [],
+    },
+    connectionsLoading: {
+      type: Boolean,
+      default: false,
     },
     routePrefill: {
       type: Object,
@@ -314,6 +358,13 @@ export default {
     showBridgeSelector() {
       return this.bridgeOptions.length > 1;
     },
+    connectionItems() {
+      return (Array.isArray(this.connections) ? this.connections : []).map((item) => ({
+        ...item,
+        value: buildConnectionKey(item),
+        label: `${item.deviceId || "未知设备"}${item.isLatest ? " · 最新" : ""}${item.sessionId ? ` · ${item.sessionId}` : ""}`,
+      }));
+    },
     currentRuntimeLabel() {
       const matched = this.runtimeAccounts.find((item) => item.value === this.debugForm.account);
       return matched ? matched.label : (this.debugForm.account || "自动选择");
@@ -327,6 +378,21 @@ export default {
         return "暂无 bridge";
       }
       return "自动选择在线 bridge";
+    },
+    selectedConnection() {
+      return this.connectionItems.find((item) => item.value === this.debugForm.connectionKey) || null;
+    },
+    currentConnectionLabel() {
+      if (this.connectionsLoading) {
+        return "正在加载连接";
+      }
+      if (this.selectedConnection) {
+        return this.selectedConnection.label;
+      }
+      if (!this.connectionItems.length) {
+        return "暂无在线连接";
+      }
+      return "未指定真实设备";
     },
     currentDebugAgentOptions() {
       const bridgeKey = this.debugForm.bridgeId;
@@ -367,6 +433,15 @@ export default {
       }
       const matched = this.currentDebugAgentOptions.find((item) => item.value === this.debugForm.agentId);
       return Boolean(matched && matched.ghost);
+    },
+    hasConnectionContext() {
+      return Boolean(this.debugForm.sessionId || this.debugForm.deviceId);
+    },
+    composerNote() {
+      if (this.hasConnectionContext) {
+        return `普通回复仍只显示在当前调试面板；若 subagent 调用 xiaozhi_push_text，将复用 ${this.currentConnectionLabel} 主动推送。`;
+      }
+      return "消息只在后台调试链路中流转；未绑定真实设备上下文时，不会主动推送到设备。";
     },
     canSendDirectChat() {
       return Boolean(
@@ -417,6 +492,14 @@ export default {
         this.routePrefillApplied = false;
         if (this.dialogVisible) {
           this.applyDebugDefaults();
+        }
+      },
+    },
+    connections: {
+      deep: true,
+      handler() {
+        if (this.dialogVisible) {
+          this.syncDebugConnection();
         }
       },
     },
@@ -472,6 +555,9 @@ export default {
         sessionId,
         account: this.debugForm.account,
         bridgeId: this.debugForm.bridgeId,
+        connectionKey: this.debugForm.connectionKey,
+        targetSessionId: this.debugForm.sessionId,
+        targetDeviceId: this.debugForm.deviceId,
         agentId: this.debugForm.agentId,
         agentName: this.debugForm.agentName,
         preview: (lastMessage.text || "").slice(0, 72),
@@ -515,6 +601,7 @@ export default {
       }
 
       this.syncDebugBridge();
+      this.syncDebugConnection();
 
       if (!this.routePrefillApplied) {
         const matchedAgent = this.currentDebugAgentOptions.find((item) => item.value === this.routePrefill.openclawAgentId);
@@ -542,6 +629,23 @@ export default {
       }
       this.debugForm.bridgeId = preferred.bridgeId;
     },
+    syncDebugConnection() {
+      if (!this.connectionItems.length) {
+        this.debugForm.connectionKey = "";
+        this.debugForm.sessionId = "";
+        this.debugForm.deviceId = "";
+        return;
+      }
+      const current = this.connectionItems.find((item) => item.value === this.debugForm.connectionKey)
+        || this.connectionItems.find((item) =>
+          item.sessionId === this.debugForm.sessionId && item.deviceId === this.debugForm.deviceId
+        );
+      const preferred = this.connectionItems.find((item) => item.isLatest) || this.connectionItems[0];
+      const next = current || preferred;
+      this.debugForm.connectionKey = next ? next.value : "";
+      this.debugForm.sessionId = next ? (next.sessionId || "") : "";
+      this.debugForm.deviceId = next ? (next.deviceId || "") : "";
+    },
     syncDebugAgent() {
       const options = this.currentDebugAgentOptions;
       if (!options.some((item) => item.value === this.debugForm.agentId)) {
@@ -555,7 +659,14 @@ export default {
     handleDebugAccountChange(value) {
       this.debugForm.account = value;
       this.syncDebugBridge();
+      this.syncDebugConnection();
       this.syncDebugAgent();
+    },
+    handleConnectionChange(value) {
+      const matched = this.connectionItems.find((item) => item.value === value);
+      this.debugForm.connectionKey = matched ? matched.value : "";
+      this.debugForm.sessionId = matched ? (matched.sessionId || "") : "";
+      this.debugForm.deviceId = matched ? (matched.deviceId || "") : "";
     },
     handleDebugAgentChange(value) {
       this.debugForm.agentId = value;
@@ -602,9 +713,13 @@ export default {
         this.debugForm.account = this.runtimeAccounts.length ? this.runtimeAccounts[0].value : "";
       }
       this.debugForm.bridgeId = item.bridgeId || "";
+      this.debugForm.connectionKey = item.connectionKey || "";
+      this.debugForm.sessionId = item.targetSessionId || "";
+      this.debugForm.deviceId = item.targetDeviceId || "";
       this.debugForm.agentId = item.agentId || "";
       this.debugForm.agentName = item.agentName || item.agentId || "";
       this.syncDebugBridge();
+      this.syncDebugConnection();
       this.syncDebugAgent();
       this.debugForm.debugSessionId = item.sessionId;
       this.debugMessages = Array.isArray(item.messages) ? item.messages : [];
@@ -664,6 +779,8 @@ export default {
         agentId: this.debugForm.agentId,
         agentName: this.debugForm.agentName,
         debugSessionId: this.debugForm.debugSessionId,
+        sessionId: this.debugForm.sessionId,
+        deviceId: this.debugForm.deviceId,
         speaker: this.debugForm.speaker,
         text,
       };

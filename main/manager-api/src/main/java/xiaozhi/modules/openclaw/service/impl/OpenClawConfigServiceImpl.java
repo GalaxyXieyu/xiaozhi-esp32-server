@@ -238,6 +238,9 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         requestBody.put("agentId", StringUtils.trimToEmpty(request.getAgentId()));
         requestBody.put("agentName", StringUtils.trimToEmpty(request.getAgentName()));
         requestBody.put("debugSessionId", StringUtils.trimToEmpty(request.getDebugSessionId()));
+        requestBody.put("sessionId", StringUtils.trimToEmpty(request.getSessionId()));
+        requestBody.put("deviceId", StringUtils.trimToEmpty(request.getDeviceId()));
+        requestBody.put("peerId", StringUtils.trimToEmpty(request.getPeerId()));
         requestBody.put("speaker", StringUtils.trimToEmpty(request.getSpeaker()));
         requestBody.put("text", StringUtils.trimToEmpty(request.getText()));
 
@@ -1017,17 +1020,68 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private String extractReplyText(Map<String, Object> result, Object rawResult) {
-        String replyText = firstString(result, new String[]{"text", "replyText", "reply", "message", "output"});
+        String replyText = extractReplyTextValue(result);
         if (StringUtils.isNotBlank(replyText)) {
             return replyText;
         }
-        if (rawResult == null) {
+        return extractReplyTextValue(rawResult);
+    }
+
+    private String extractReplyTextValue(Object value) {
+        if (value == null) {
             return "";
         }
-        if (rawResult instanceof Map<?, ?>) {
-            return JsonUtils.toJsonString(rawResult);
+        if (value instanceof String text) {
+            return StringUtils.trimToEmpty(text);
         }
-        return String.valueOf(rawResult);
+        if (value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        if (value instanceof List<?> list) {
+            StringBuilder builder = new StringBuilder();
+            for (Object item : list) {
+                String nested = extractReplyTextValue(item);
+                if (StringUtils.isBlank(nested)) {
+                    continue;
+                }
+                if (builder.length() > 0) {
+                    builder.append('\n');
+                }
+                builder.append(nested.trim());
+            }
+            return builder.toString().trim();
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            return StringUtils.trimToEmpty(String.valueOf(value));
+        }
+
+        Map<String, Object> normalized = castMap(map);
+        String direct = firstString(normalized, new String[]{"text", "replyText", "reply", "response", "message", "output", "finalText", "outputText"});
+        if (StringUtils.isNotBlank(direct)) {
+            return direct;
+        }
+
+        String nestedPayload = extractReplyTextValue(normalized.get("payload"));
+        if (StringUtils.isNotBlank(nestedPayload)) {
+            return nestedPayload;
+        }
+
+        String nestedPayloads = extractReplyTextValue(normalized.get("payloads"));
+        if (StringUtils.isNotBlank(nestedPayloads)) {
+            return nestedPayloads;
+        }
+
+        String nestedResult = extractReplyTextValue(normalized.get("result"));
+        if (StringUtils.isNotBlank(nestedResult)) {
+            return nestedResult;
+        }
+
+        String nestedMessages = extractReplyTextValue(normalized.get("messages"));
+        if (StringUtils.isNotBlank(nestedMessages)) {
+            return nestedMessages;
+        }
+
+        return "";
     }
 
     @SuppressWarnings("unchecked")

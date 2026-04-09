@@ -30,10 +30,11 @@
             :inventory="inventory"
             :setup-guide="setupGuide"
             :inventory-loading="inventoryLoading"
+            :connection-feedback="connectionFeedback"
             @back="clearSelection"
             @edit="openEditChannel"
             @copy-command="copyInstallCommand"
-            @refresh-inventory="refreshSelectedChannelData"
+            @refresh-inventory="handleManualInventoryCheck"
           />
 
           <OpenClawChannelDetail
@@ -48,7 +49,7 @@
             @back="clearSelection"
             @edit="openEditChannel"
             @copy-command="copyInstallCommand"
-            @refresh-inventory="refreshSelectedChannelData"
+            @refresh-inventory="handleManualInventoryCheck"
             @change-runtime="handleRuntimeChange"
             @open-debug="openDebugForAgent"
             @open-binding-agent="openBoundAgent"
@@ -70,6 +71,8 @@
       :visible.sync="showDebugDialog"
       :channel="selectedChannel"
       :inventory="inventory"
+      :connections="connections"
+      :connections-loading="connectionsLoading"
       :route-prefill="routePrefill"
     />
 
@@ -141,6 +144,12 @@ const createEmptySummary = () => ({
   runtimeCount: 0,
 });
 
+const createEmptyConnectionFeedback = () => ({
+  status: "idle",
+  message: "",
+  checkedAt: "",
+});
+
 const stripHtml = (value = "") => value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 
 const compactInventoryMessage = (message = "") => {
@@ -193,13 +202,16 @@ export default {
       saving: false,
       guideLoading: false,
       inventoryLoading: false,
+      connectionsLoading: false,
       bindingsLoading: false,
       channels: [],
       channelSummaries: {},
       selectedChannelId: "",
       selectedRuntimeAccount: "",
       inventory: createEmptyInventory(),
+      connections: [],
       setupGuide: createEmptySetupGuide(),
+      connectionFeedback: createEmptyConnectionFeedback(),
       channelBindings: [],
       editorVisible: false,
       editorMode: "create",
@@ -399,7 +411,10 @@ export default {
       this.selectedChannelId = channel.id;
       this.selectedRuntimeAccount = "";
       this.inventory = createEmptyInventory();
+      this.connectionsLoading = false;
+      this.connections = [];
       this.setupGuide = createEmptySetupGuide();
+      this.connectionFeedback = createEmptyConnectionFeedback();
       this.channelBindings = [];
       this.refreshSelectedChannelData();
     },
@@ -407,13 +422,21 @@ export default {
       this.selectedChannelId = "";
       this.selectedRuntimeAccount = "";
       this.inventory = createEmptyInventory();
+      this.connectionsLoading = false;
+      this.connections = [];
       this.setupGuide = createEmptySetupGuide();
+      this.connectionFeedback = createEmptyConnectionFeedback();
       this.channelBindings = [];
       this.showDebugDialog = false;
     },
-    refreshSelectedChannelData() {
+    refreshSelectedChannelData(options = {}) {
       this.refreshSetupGuide();
-      this.syncSelectedInventory();
+      this.syncSelectedInventory(options);
+    },
+    handleManualInventoryCheck() {
+      this.refreshSelectedChannelData({
+        announce: true,
+      });
     },
     isInventoryConnected(payload) {
       return Boolean(payload && payload.healthy && (payload.connectedBridgeCount || 0) > 0);
@@ -438,25 +461,40 @@ export default {
         this.$message.error((data && data.msg) || "生成安装命令失败");
       });
     },
-    syncSelectedInventory() {
+    syncSelectedInventory(options = {}) {
+      const { announce = false } = options;
       if (!this.selectedChannelId) {
         this.inventory = createEmptyInventory();
         this.channelBindings = [];
+        this.connections = [];
+        this.connectionFeedback = createEmptyConnectionFeedback();
         return;
       }
       this.inventoryLoading = true;
+      this.connectionFeedback = {
+        status: "checking",
+        message: "正在拉取 OpenClaw inventory，请稍候。",
+        checkedAt: "",
+      };
       Api.openclaw.getChannelInventory(this.selectedChannelId, ({ data }) => {
         this.inventoryLoading = false;
         if (data.code === 0) {
           const nextInventory = normalizeInventoryPayload(data.data || {}, this.selectedChannelId);
           this.inventory = nextInventory;
+          const nextFeedback = this.buildConnectionFeedback(nextInventory);
+          this.connectionFeedback = nextFeedback;
           this.syncRuntimeSelection();
           this.updateSummaryFromSelectedChannel();
+          if (announce) {
+            this.announceConnectionFeedback(nextFeedback);
+          }
           if (this.isInventoryConnected(nextInventory)) {
             this.loadSelectedBindings();
+            this.loadSelectedConnections();
             this.maybeOpenRoutedDebug();
           } else {
             this.channelBindings = [];
+            this.connections = [];
             this.showDebugDialog = false;
           }
           return;
@@ -466,9 +504,14 @@ export default {
           channelId: this.selectedChannelId,
           errorMessage: compactInventoryMessage(data.msg || "同步 OpenClaw inventory 失败"),
         };
+        this.connectionFeedback = this.buildConnectionFeedback(this.inventory);
         this.channelBindings = [];
+        this.connections = [];
         this.showDebugDialog = false;
         this.updateSummaryFromSelectedChannel();
+        if (announce) {
+          this.announceConnectionFeedback(this.connectionFeedback);
+        }
       }, ({ data }) => {
         this.inventoryLoading = false;
         this.inventory = {
@@ -476,10 +519,48 @@ export default {
           channelId: this.selectedChannelId,
           errorMessage: compactInventoryMessage((data && data.msg) || "同步 OpenClaw inventory 失败"),
         };
+        this.connectionFeedback = this.buildConnectionFeedback(this.inventory);
         this.channelBindings = [];
+        this.connections = [];
         this.showDebugDialog = false;
         this.updateSummaryFromSelectedChannel();
+        if (announce) {
+          this.announceConnectionFeedback(this.connectionFeedback);
+        }
       });
+    },
+    buildConnectionFeedback(inventory) {
+      if (this.isInventoryConnected(inventory)) {
+        return {
+          status: "success",
+          message: `检测到 ${inventory.connectedBridgeCount || 0} 个在线 bridge，正在进入详情页。`,
+          checkedAt: new Date().toISOString(),
+        };
+      }
+
+      if (inventory && inventory.errorMessage) {
+        return {
+          status: "warning",
+          message: inventory.errorMessage,
+          checkedAt: new Date().toISOString(),
+        };
+      }
+
+      return {
+        status: "warning",
+        message: "还没有检测到在线 bridge，请确认本地 OpenClaw 已执行接入命令并保持在线。",
+        checkedAt: new Date().toISOString(),
+      };
+    },
+    announceConnectionFeedback(feedback) {
+      if (!feedback || !feedback.status || feedback.status === "idle" || feedback.status === "checking") {
+        return;
+      }
+      if (feedback.status === "success") {
+        this.$message.success(feedback.message || "连接检测通过");
+        return;
+      }
+      this.$message.warning(feedback.message || "连接检测未通过");
     },
     loadSelectedBindings() {
       if (!this.selectedChannelId) {
@@ -500,6 +581,26 @@ export default {
         this.bindingsLoading = false;
         this.channelBindings = [];
         this.$message.error((data && data.msg) || "获取绑定关系失败");
+      });
+    },
+    loadSelectedConnections() {
+      if (!this.selectedChannelId) {
+        this.connections = [];
+        return;
+      }
+      this.connectionsLoading = true;
+      Api.openclaw.getConnections(this.selectedChannelId, ({ data }) => {
+        this.connectionsLoading = false;
+        if (data.code === 0) {
+          this.connections = Array.isArray(data.data) ? data.data : [];
+          return;
+        }
+        this.connections = [];
+        this.$message.error(data.msg || "获取在线连接失败");
+      }, ({ data }) => {
+        this.connectionsLoading = false;
+        this.connections = [];
+        this.$message.error((data && data.msg) || "获取在线连接失败");
       });
     },
     syncRuntimeSelection() {

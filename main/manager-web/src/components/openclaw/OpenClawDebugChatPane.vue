@@ -60,26 +60,6 @@
       </aside>
 
       <div class="chat-column">
-        <div v-if="debugPending || visibleStatusEvents.length" class="status-strip">
-          <div class="status-strip-head">
-            <span class="status-strip-title">执行状态</span>
-            <span v-if="debugPending" class="status-pill tone-warning">处理中</span>
-          </div>
-          <div class="status-event-list">
-            <div
-              v-for="item in visibleStatusEvents"
-              :key="item.id"
-              class="status-event"
-            >
-              <span class="status-pill" :class="statusToneClass(item.tone)">{{ statusToneLabel(item.tone) }}</span>
-              <div class="status-copy">
-                <div class="status-text">{{ item.text }}</div>
-                <div v-if="item.meta" class="status-meta">{{ item.meta }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div ref="transcript" class="debug-transcript">
           <div v-if="visibleMessages.length" class="message-list">
             <article
@@ -106,6 +86,20 @@
                   </el-button>
                 </div>
                 <div class="message-body">{{ item.text }}</div>
+              </div>
+            </article>
+
+            <article v-if="activeStatusEvent" class="message-row role-system inline-status-row">
+              <div class="message-avatar">SYS</div>
+              <div class="inline-status-card">
+                <div class="inline-status-head">
+                  <span class="status-pill" :class="statusToneClass(activeStatusEvent.tone)">
+                    {{ statusToneLabel(activeStatusEvent.tone) }}
+                  </span>
+                  <span class="inline-status-label">执行中</span>
+                </div>
+                <div class="status-text">{{ activeStatusEvent.text }}</div>
+                <div v-if="activeStatusEvent.meta" class="status-meta">{{ activeStatusEvent.meta }}</div>
               </div>
             </article>
           </div>
@@ -218,6 +212,23 @@ export default {
     },
     visibleStatusEvents() {
       return Array.isArray(this.debugStatusEvents) ? this.debugStatusEvents.slice(-6) : [];
+    },
+    activeStatusEvent() {
+      const latest = this.visibleStatusEvents.length
+        ? this.visibleStatusEvents[this.visibleStatusEvents.length - 1]
+        : null;
+      if (this.debugPending) {
+        return latest || {
+          id: "pending-generic",
+          text: "调试请求已提交，等待 OpenClaw 处理",
+          meta: "",
+          tone: "warning",
+        };
+      }
+      if (latest && latest.tone === "danger") {
+        return latest;
+      }
+      return null;
     },
     visibleMessages() {
       return Array.isArray(this.debugMessages)
@@ -461,39 +472,6 @@ export default {
   gap: 10px;
 }
 
-.status-strip {
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid #e5ebf4;
-  background: #f8fafc;
-}
-
-.status-strip-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.status-strip-title {
-  color: #22314f;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status-event-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.status-event {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -536,7 +514,32 @@ export default {
   min-width: 0;
 }
 
+.inline-status-row {
+  margin-top: 4px;
+}
+
+.inline-status-card {
+  max-width: min(78%, 720px);
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e4eaf4;
+}
+
+.inline-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inline-status-label {
+  color: #6f7f99;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .status-text {
+  margin-top: 8px;
   color: #24324d;
   font-size: 13px;
   line-height: 1.6;

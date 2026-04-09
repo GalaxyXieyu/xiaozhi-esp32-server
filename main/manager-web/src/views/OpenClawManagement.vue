@@ -243,8 +243,7 @@ export default {
     },
     debugAvailable() {
       return this.selectedChannelConnected
-        && Number(this.inventory.connectedBridgeCount || 0) > 0
-        && this.hasActiveDebugConnection;
+        && Number(this.inventory.connectedBridgeCount || 0) > 0;
     },
     debugUnavailableReason() {
       if (!this.selectedChannelConnected) {
@@ -255,9 +254,6 @@ export default {
       }
       if (Number(this.inventory.connectedBridgeCount || 0) <= 0) {
         return "当前没有在线 Bridge，暂时不能调试。";
-      }
-      if (!this.hasActiveDebugConnection) {
-        return "当前没有在线连接，设备建立会话后才能调试。";
       }
       return "";
     },

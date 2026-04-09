@@ -160,7 +160,7 @@
               <div class="setting-switches">
                 <label class="setting-switch">
                   <span>推送到设备</span>
-                  <el-switch v-model="localPushToDevice" :disabled="!debugReady" />
+                  <el-switch v-model="localPushToDevice" :disabled="!debugReady || !hasActiveConnection" />
                 </label>
                 <label class="setting-switch">
                   <span>浏览器语音</span>
@@ -172,6 +172,9 @@
 
           <div v-if="connectionLabel" class="connection-note">
             已自动复用在线连接：{{ connectionLabel }}
+          </div>
+          <div v-else-if="debugReady" class="connection-note is-muted">
+            当前没有在线设备连接，本次调试仅返回到页面，不会推送到设备。
           </div>
 
           <div v-if="!debugReady" class="runtime-warning">

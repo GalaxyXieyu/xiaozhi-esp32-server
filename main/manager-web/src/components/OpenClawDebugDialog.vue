@@ -64,6 +64,7 @@ const buildConnectionKey = (item = {}) => `${item.sessionId || ""}::${item.devic
 const STATUS_EVENT_TYPES = new Set([
   "accepted",
   "agent_bound",
+  "progress",
   "subagent_spawned",
   "subagent_completed",
   "browser_audio_ready",
@@ -341,14 +342,11 @@ export default {
       return this.connectionItems.length > 0;
     },
     debugReady() {
-      return this.hasAvailableBridge && this.hasActiveConnection;
+      return this.hasAvailableBridge;
     },
     debugDisabledReason() {
       if (!this.hasAvailableBridge) {
         return "当前 runtime 没有在线 Bridge，暂时不能调试。";
-      }
-      if (!this.hasActiveConnection) {
-        return "当前没有在线连接，设备先连上再进入调试。";
       }
       return "";
     },
@@ -575,6 +573,7 @@ export default {
         this.debugForm.connectionKey = "";
         this.debugForm.sessionId = "";
         this.debugForm.deviceId = "";
+        this.debugForm.pushToDevice = false;
         return;
       }
       const current = this.connectionItems.find((item) => item.value === this.debugForm.connectionKey)
@@ -608,7 +607,7 @@ export default {
       this.debugForm.agentName = this.findOptionLabel(this.currentDebugAgentOptions, value, this.debugForm.agentName || value);
     },
     handlePushToDeviceChange(value) {
-      this.debugForm.pushToDevice = Boolean(value);
+      this.debugForm.pushToDevice = this.hasActiveConnection && Boolean(value);
     },
     handleBrowserAudioChange(value) {
       this.debugForm.browserAudio = Boolean(value);
@@ -963,6 +962,13 @@ export default {
           text: `已绑定 Agent：${agentLabel || "未知 Agent"}`,
           meta,
           tone: "primary",
+        };
+      }
+      if (event.type === "progress") {
+        return {
+          text: event.message || "OpenClaw 正在处理",
+          meta,
+          tone: "info",
         };
       }
       if (event.type === "subagent_spawned") {

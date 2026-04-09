@@ -752,11 +752,14 @@ class OpenClawAdminHandler(BaseHandler):
             data.get("debugSessionId") or data.get("sessionId")
         )
         peer_id = (data.get("peerId") or "").strip() or f"web-debug:{debug_session_id}"
-        device_id = (data.get("deviceId") or "").strip() or peer_id
+        target_session_id = (data.get("sessionId") or "").strip() or None
+        target_device_id = (data.get("deviceId") or "").strip() or None
         client_id = (data.get("clientId") or "manager-web").strip() or "manager-web"
         speaker = (data.get("speaker") or "管理后台调试").strip() or "管理后台调试"
         agent_id = (data.get("agentId") or "").strip() or None
         agent_name = (data.get("agentName") or "").strip() or None
+        push_to_device = bool(data.get("pushToDevice"))
+        browser_audio = bool(data.get("browserAudio"))
 
         bind_result = None
         try:
@@ -777,12 +780,17 @@ class OpenClawAdminHandler(BaseHandler):
                 self.hub_config.get("chat_method", "xiaozhi.chat"),
                 {
                     "account": account,
-                    "sessionId": debug_session_id,
-                    "deviceId": device_id,
+                    "debugSessionId": debug_session_id,
+                    "sessionId": target_session_id,
+                    "deviceId": target_device_id,
                     "clientId": client_id,
                     "peerId": peer_id,
                     "speaker": speaker,
                     "text": text,
+                    "deferReply": True,
+                    "pushToDevice": push_to_device,
+                    "browserAudio": browser_audio,
+                    "bridgeId": bridge_id,
                 },
                 bridge_id=bridge_id,
                 account=account,
@@ -794,12 +802,67 @@ class OpenClawAdminHandler(BaseHandler):
                     "peerId": peer_id,
                     "account": account,
                     "bridgeId": bridge_id,
+                    "pushToDevice": push_to_device,
+                    "browserAudio": browser_audio,
                     "bound": bind_result,
                     "result": result,
                 }
             )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"管理员直连 OpenClaw 调试聊天失败: {e}")
+            response = web.json_response(
+                {"ok": False, "message": str(e)},
+                status=400,
+            )
+
+        self._add_cors_headers(response)
+        return response
+
+    async def get_debug_session(self, request: web.Request):
+        unauthorized = await self._require_auth(request)
+        if unauthorized:
+            return unauthorized
+
+        if self.openclaw_hub is None:
+            response = web.json_response(
+                {"ok": False, "message": "openclaw hub 未启用"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        query = request.query or {}
+        debug_session_id = self._normalize_debug_key(query.get("debugSessionId"))
+        if not debug_session_id:
+            response = web.json_response(
+                {"ok": False, "message": "debugSessionId 不能为空"},
+                status=400,
+            )
+            self._add_cors_headers(response)
+            return response
+
+        account = (query.get("account") or "default").strip() or "default"
+        bridge_id = (query.get("bridgeId") or "").strip() or None
+        since_seq_raw = (query.get("sinceSeq") or "").strip()
+        try:
+            since_seq = int(since_seq_raw) if since_seq_raw else 0
+        except ValueError:
+            since_seq = 0
+
+        try:
+            result = await self.openclaw_hub.request(
+                self.hub_config.get("debug_session_method", "xiaozhi.debugSessionGet"),
+                {
+                    "account": account,
+                    "debugSessionId": debug_session_id,
+                    "sinceSeq": since_seq,
+                },
+                bridge_id=bridge_id,
+                account=account,
+            )
+            response = web.json_response({"ok": True, "result": result})
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"获取 OpenClaw 调试会话失败: {e}")
             response = web.json_response(
                 {"ok": False, "message": str(e)},
                 status=400,

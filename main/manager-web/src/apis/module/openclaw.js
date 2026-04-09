@@ -160,6 +160,37 @@ export default {
                 });
             }).send();
     },
+    getDebugSession(channelId, debugSessionId, params, callback, failCallback) {
+        const query = new URLSearchParams();
+        if (params && params.account) {
+            query.append('account', params.account);
+        }
+        if (params && params.bridgeId) {
+            query.append('bridgeId', params.bridgeId);
+        }
+        if (params && Number.isInteger(params.sinceSeq)) {
+            query.append('sinceSeq', `${params.sinceSeq}`);
+        }
+        const suffix = query.toString() ? `?${query.toString()}` : '';
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/debug-sessions/${encodeURIComponent(debugSessionId)}${suffix}`)
+            .method('GET')
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getDebugSession(channelId, debugSessionId, params, callback, failCallback);
+                });
+            }).send();
+    },
     clearSession(channelId, data, callback, failCallback) {
         RequestService.sendRequest()
             .url(`${getServiceUrl()}/openclaw-config/channels/${channelId}/clear-session`)

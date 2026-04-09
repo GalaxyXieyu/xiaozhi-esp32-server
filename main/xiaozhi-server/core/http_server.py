@@ -160,6 +160,10 @@ class SimpleHttpServer:
                                 "/admin/openclaw/direct-chat",
                                 self.openclaw_admin_handler.direct_chat,
                             ),
+                            web.get(
+                                "/admin/openclaw/debug-session",
+                                self.openclaw_admin_handler.get_debug_session,
+                            ),
                             web.post(
                                 "/admin/openclaw/clear-session",
                                 self.openclaw_admin_handler.clear_session,
@@ -190,6 +194,10 @@ class SimpleHttpServer:
                             ),
                             web.options(
                                 "/admin/openclaw/direct-chat",
+                                self.openclaw_admin_handler.handle_options,
+                            ),
+                            web.options(
+                                "/admin/openclaw/debug-session",
                                 self.openclaw_admin_handler.handle_options,
                             ),
                             web.options(

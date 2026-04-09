@@ -12,6 +12,7 @@ import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugSessionTraceResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptResponseDTO;
 
@@ -31,6 +32,9 @@ public interface OpenClawConfigService {
     OpenClawChannelSetupGuideDTO getChannelSetupGuide(String channelId, String channelName, String serverOrigin);
 
     OpenClawDebugChatResponseDTO directChat(String channelId, OpenClawDebugChatRequestDTO request);
+
+    OpenClawDebugSessionTraceResponseDTO getDebugSessionTrace(String channelId, String debugSessionId,
+                                                              String account, String bridgeId, Integer sinceSeq);
 
     OpenClawClearSessionResponseDTO clearSession(String channelId, OpenClawClearSessionRequestDTO request);
 

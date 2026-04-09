@@ -39,4 +39,10 @@ public class OpenClawDebugChatRequestDTO implements Serializable {
 
     @Schema(description = "调试说话人标签")
     private String speaker;
+
+    @Schema(description = "是否同步推送到真实设备")
+    private Boolean pushToDevice;
+
+    @Schema(description = "是否为浏览器准备语音播放")
+    private Boolean browserAudio;
 }

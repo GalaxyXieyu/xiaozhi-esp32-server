@@ -36,6 +36,18 @@ public class OpenClawDebugChatResponseDTO implements Serializable {
     @Schema(description = "最终命中的 agentName")
     private String agentName;
 
+    @Schema(description = "当前请求是否已受理")
+    private Boolean accepted;
+
+    @Schema(description = "当前调试状态")
+    private String status;
+
+    @Schema(description = "是否同步推送到设备")
+    private Boolean pushToDevice;
+
+    @Schema(description = "是否为浏览器准备语音")
+    private Boolean browserAudio;
+
     @Schema(description = "回复文本")
     private String replyText;
 

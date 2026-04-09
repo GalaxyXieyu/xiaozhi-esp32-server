@@ -30,6 +30,7 @@ import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugSessionTraceResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
@@ -124,6 +125,24 @@ public class OpenClawConfigController {
             return new Result<OpenClawDebugChatResponseDTO>().ok(openClawConfigService.directChat(channelId, request));
         } catch (Exception e) {
             return new Result<OpenClawDebugChatResponseDTO>().error("OpenClaw 在线调试失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/channels/{channelId}/debug-sessions/{debugSessionId}")
+    @Operation(summary = "获取 OpenClaw 调试时间线")
+    @RequiresPermissions("sys:role:normal")
+    public Result<OpenClawDebugSessionTraceResponseDTO> getDebugSessionTrace(
+            @PathVariable String channelId,
+            @PathVariable String debugSessionId,
+            @RequestParam(required = false) String account,
+            @RequestParam(required = false) String bridgeId,
+            @RequestParam(required = false) Integer sinceSeq) {
+        try {
+            return new Result<OpenClawDebugSessionTraceResponseDTO>().ok(
+                    openClawConfigService.getDebugSessionTrace(channelId, debugSessionId, account, bridgeId, sinceSeq)
+            );
+        } catch (Exception e) {
+            return new Result<OpenClawDebugSessionTraceResponseDTO>().error("获取 OpenClaw 调试时间线失败: " + e.getMessage());
         }
     }
 

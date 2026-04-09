@@ -38,6 +38,7 @@ import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDebugSessionTraceResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawVoiceInterruptResponseDTO;
 import xiaozhi.modules.openclaw.service.OpenClawConfigService;
@@ -243,6 +244,8 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         requestBody.put("peerId", StringUtils.trimToEmpty(request.getPeerId()));
         requestBody.put("speaker", StringUtils.trimToEmpty(request.getSpeaker()));
         requestBody.put("text", StringUtils.trimToEmpty(request.getText()));
+        requestBody.put("pushToDevice", Boolean.TRUE.equals(request.getPushToDevice()));
+        requestBody.put("browserAudio", Boolean.TRUE.equals(request.getBrowserAudio()));
 
         Map<String, Object> payload = requestChannelApi(channel, "/direct-chat", HttpMethod.POST, requestBody);
         Map<String, Object> root = unwrapData(payload);
@@ -258,9 +261,31 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         response.setPeerId(firstString(root, new String[]{"peerId"}));
         response.setAgentId(StringUtils.defaultIfBlank(firstString(result, new String[]{"agentId"}), request.getAgentId()));
         response.setAgentName(StringUtils.defaultIfBlank(firstString(result, new String[]{"agentName"}), request.getAgentName()));
+        response.setAccepted(firstBoolean(result, new String[]{"accepted"}));
+        response.setStatus(StringUtils.defaultIfBlank(
+                firstString(result, new String[]{"status"}),
+                firstString(root, new String[]{"status"})
+        ));
+        response.setPushToDevice(Boolean.TRUE.equals(firstBoolean(root, new String[]{"pushToDevice"}))
+                || Boolean.TRUE.equals(firstBoolean(result, new String[]{"pushToDevice"})));
+        response.setBrowserAudio(Boolean.TRUE.equals(firstBoolean(root, new String[]{"browserAudio"}))
+                || Boolean.TRUE.equals(firstBoolean(result, new String[]{"browserAudio"})));
         response.setReplyText(extractReplyText(result, rawResult));
         response.setRawResult(result);
         return response;
+    }
+
+    @Override
+    public OpenClawDebugSessionTraceResponseDTO getDebugSessionTrace(String channelId, String debugSessionId,
+                                                                    String account, String bridgeId, Integer sinceSeq) {
+        OpenClawChannelDTO channel = resolveEnabledChannel(channelId);
+        Map<String, String> query = buildDebugSessionQuery(debugSessionId, account, bridgeId, sinceSeq);
+        String sourceUrl = buildChannelApiUrl(channel, "/debug-session", query);
+        Map<String, Object> payload = requestChannelApiByUrl(channel, sourceUrl, HttpMethod.GET, null);
+        Map<String, Object> root = unwrapData(payload);
+        Object rawResult = root.get("result");
+        Map<String, Object> result = rawResult instanceof Map<?, ?> map ? castMap(map) : castMap(root);
+        return toDebugSessionTraceResponse(channelId, sourceUrl, result);
     }
 
     @Override
@@ -760,6 +785,17 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return query;
     }
 
+    private Map<String, String> buildDebugSessionQuery(String debugSessionId, String account, String bridgeId, Integer sinceSeq) {
+        Map<String, String> query = new LinkedHashMap<>();
+        query.put("debugSessionId", StringUtils.trimToNull(debugSessionId));
+        query.put("account", StringUtils.trimToNull(account));
+        query.put("bridgeId", StringUtils.trimToNull(bridgeId));
+        if (sinceSeq != null && sinceSeq >= 0) {
+            query.put("sinceSeq", String.valueOf(sinceSeq));
+        }
+        return query;
+    }
+
     private Map<String, String> buildInventoryQuery(String channelId) {
         Map<String, String> query = new LinkedHashMap<>();
         if (StringUtils.isNotBlank(channelId)) {
@@ -787,6 +823,68 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return response;
     }
 
+    private OpenClawDebugSessionTraceResponseDTO toDebugSessionTraceResponse(String channelId, String sourceUrl, Map<String, Object> raw) {
+        OpenClawDebugSessionTraceResponseDTO response = new OpenClawDebugSessionTraceResponseDTO();
+        response.setChannelId(channelId);
+        response.setSourceUrl(sourceUrl);
+        response.setDebugSessionId(firstString(raw, new String[]{"debugSessionId"}));
+        response.setAccount(firstString(raw, new String[]{"account"}));
+        response.setBridgeId(firstString(raw, new String[]{"bridgeId"}));
+        response.setPeerId(firstString(raw, new String[]{"peerId"}));
+        response.setAgentId(firstString(raw, new String[]{"agentId"}));
+        response.setAgentName(firstString(raw, new String[]{"agentName"}));
+        response.setStatus(firstString(raw, new String[]{"status"}));
+        response.setPending(firstBoolean(raw, new String[]{"pending"}));
+        response.setNextSeq(firstInteger(raw, new String[]{"nextSeq"}));
+        response.setLatestReplyText(firstString(raw, new String[]{"latestReplyText"}));
+        response.setLatestError(firstString(raw, new String[]{"latestError"}));
+        response.setUpdatedAt(firstLong(raw, new String[]{"updatedAt"}));
+        response.setCreatedAt(firstLong(raw, new String[]{"createdAt"}));
+
+        Object rawBrowserAudio = findFirst(raw, new String[]{"browserAudio"});
+        Map<String, Object> browserAudio = rawBrowserAudio instanceof Map<?, ?> browserAudioMap
+                ? castMap(browserAudioMap)
+                : new LinkedHashMap<>();
+        response.getBrowserAudio().setEnabled(firstBoolean(browserAudio, new String[]{"enabled"}));
+        response.getBrowserAudio().setReady(firstBoolean(browserAudio, new String[]{"ready"}));
+        response.getBrowserAudio().setKind(firstString(browserAudio, new String[]{"kind"}));
+        response.getBrowserAudio().setText(firstString(browserAudio, new String[]{"text"}));
+
+        Object rawDeviceDelivery = findFirst(raw, new String[]{"deviceDelivery"});
+        Map<String, Object> deviceDelivery = rawDeviceDelivery instanceof Map<?, ?> deviceDeliveryMap
+                ? castMap(deviceDeliveryMap)
+                : new LinkedHashMap<>();
+        response.getDeviceDelivery().setEnabled(firstBoolean(deviceDelivery, new String[]{"enabled"}));
+        response.getDeviceDelivery().setStatus(firstString(deviceDelivery, new String[]{"status"}));
+        response.getDeviceDelivery().setMessage(firstString(deviceDelivery, new String[]{"message"}));
+
+        Object rawEvents = findFirst(raw, new String[]{"events"});
+        if (rawEvents instanceof List<?> list) {
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> map)) {
+                    continue;
+                }
+                Map<String, Object> eventMap = castMap(map);
+                OpenClawDebugSessionTraceResponseDTO.TraceEvent event = new OpenClawDebugSessionTraceResponseDTO.TraceEvent();
+                event.setSeq(firstInteger(eventMap, new String[]{"seq"}));
+                event.setType(firstString(eventMap, new String[]{"type"}));
+                event.setTimestamp(firstLong(eventMap, new String[]{"timestamp"}));
+                event.setTitle(firstString(eventMap, new String[]{"title"}));
+                event.setMessage(firstString(eventMap, new String[]{"message"}));
+                event.setStatus(firstString(eventMap, new String[]{"status"}));
+                event.setAgentId(firstString(eventMap, new String[]{"agentId"}));
+                event.setAgentName(firstString(eventMap, new String[]{"agentName"}));
+                event.setSessionKey(firstString(eventMap, new String[]{"sessionKey"}));
+                Object rawPayload = findFirst(eventMap, new String[]{"payload"});
+                event.setPayload(rawPayload instanceof Map<?, ?> payloadMap ? castMap(payloadMap) : new LinkedHashMap<>());
+                response.getEvents().add(event);
+            }
+        }
+
+        response.setRawResult(new LinkedHashMap<>(raw));
+        return response;
+    }
+
     private String trimTrailingSlash(String value) {
         if (StringUtils.isBlank(value)) {
             return "";
@@ -807,6 +905,24 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             return castMap(map);
         }
         return payload;
+    }
+
+    private Long firstLong(Map<String, Object> source, String[] candidateKeys) {
+        Object raw = findFirst(source, candidateKeys);
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw instanceof String text && StringUtils.isNotBlank(text)) {
+            try {
+                return Long.parseLong(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private List<OptionItem> extractOptions(Map<String, Object> root, String[] candidateKeys, String[] valueKeys,

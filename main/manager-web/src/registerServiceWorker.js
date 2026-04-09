@@ -28,31 +28,8 @@ export const register = () => {
               installingWorker.onstatechange = () => {
                 if (installingWorker.state === 'installed') {
                   if (navigator.serviceWorker.controller) {
-                    // 内容已缓存更新，通知用户刷新
-                    console.log('[小智服务] 新内容可用，请刷新页面');
-                    // 可以在这里展示更新提示
-                    const updateNotification = document.createElement('div');
-                    updateNotification.style.cssText = `
-                      position: fixed;
-                      bottom: 20px;
-                      right: 20px;
-                      background: #409EFF;
-                      color: white;
-                      padding: 12px 20px;
-                      border-radius: 4px;
-                      box-shadow: 0 2px 12px 0 rgba(0,0,0,.1);
-                      z-index: 9999;
-                    `;
-                    updateNotification.innerHTML = `
-                      <div style="display: flex; align-items: center;">
-                        <span style="margin-right: 10px;">发现新版本，点击刷新应用</span>
-                        <button style="background: white; color: #409EFF; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">刷新</button>
-                      </div>
-                    `;
-                    document.body.appendChild(updateNotification);
-                    updateNotification.querySelector('button').addEventListener('click', () => {
-                      window.location.reload();
-                    });
+                    // 新内容已缓存，保持静默更新，避免在页面上打断用户
+                    console.log('[小智服务] 新内容已缓存，将在下次刷新时生效');
                   } else {
                     // 一切正常，Service Worker已成功安装
                     console.log('[小智服务] 内容已缓存供离线使用');

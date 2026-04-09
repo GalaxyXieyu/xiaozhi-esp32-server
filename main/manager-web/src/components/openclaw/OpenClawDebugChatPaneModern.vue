@@ -70,8 +70,10 @@
             <div class="conversation-badges">
               <span class="topbar-chip primary">{{ agentLabel || "未选择 Agent" }}</span>
               <span class="topbar-chip subtle">{{ currentRuntimeLabel }}</span>
-              <span v-if="connectionLabel" class="topbar-chip subtle">设备 {{ connectionLabel }}</span>
-              <span v-else class="topbar-chip subtle muted">仅页面回显</span>
+              <span class="topbar-chip subtle">在线服务 {{ connectedBridgeCount }} 个</span>
+              <span v-if="connectionCount > 0" class="topbar-chip subtle">在线设备 {{ connectionCount }} 台</span>
+              <span v-else-if="connectionsLoading" class="topbar-chip subtle muted">在线设备同步中</span>
+              <span v-else class="topbar-chip subtle muted">暂无在线设备</span>
             </div>
             <el-button
               v-if="latestAssistantText"
@@ -155,7 +157,7 @@
             </div>
 
             <label class="control-switch">
-              <span class="control-switch-text">推送到设备</span>
+              <span class="control-switch-text">推送到 ESP32</span>
               <el-switch v-model="localPushToDevice" :disabled="!debugReady || !hasActiveConnection" />
             </label>
 
@@ -168,11 +170,18 @@
           <div v-if="!debugReady" class="composer-note danger">
             {{ debugDisabledReason }}
           </div>
+          <div v-else-if="connectionsLoading" class="composer-note muted">
+            在线服务已连接，正在同步在线设备…
+          </div>
           <div v-else-if="connectionLabel" class="composer-note">
-            已自动复用在线连接：{{ connectionLabel }}
+            已连接在线设备：{{ connectionLabel }}，调试结果可直接回推设备。
           </div>
           <div v-else class="composer-note muted">
-            当前没有在线设备连接，本次调试只返回到页面，不会推送到设备。
+            在线服务已连接，但当前没有在线设备。本次调试只返回到页面，不会推送到设备。
+          </div>
+
+          <div v-if="debugReady" class="composer-note subtle">
+            当前状态：{{ serviceStatusSummary }}，{{ sessionStatusSummary }}
           </div>
 
           <div v-if="selectedAgentNeedsInventorySync" class="composer-note warning">
@@ -231,6 +240,18 @@ export default {
       default: false,
     },
     hasActiveConnection: {
+      type: Boolean,
+      default: false,
+    },
+    connectedBridgeCount: {
+      type: Number,
+      default: 0,
+    },
+    connectionCount: {
+      type: Number,
+      default: 0,
+    },
+    connectionsLoading: {
       type: Boolean,
       default: false,
     },
@@ -435,6 +456,18 @@ export default {
         }
       }
       return "";
+    },
+    serviceStatusSummary() {
+      return `在线服务 ${this.connectedBridgeCount} 个`;
+    },
+    sessionStatusSummary() {
+      if (this.connectionsLoading) {
+        return "在线设备同步中";
+      }
+      if (!this.connectionCount) {
+        return "在线设备 0 台";
+      }
+      return `在线设备 ${this.connectionCount} 台`;
     },
   },
   watch: {

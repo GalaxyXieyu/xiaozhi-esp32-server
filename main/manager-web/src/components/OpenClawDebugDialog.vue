@@ -12,6 +12,9 @@
         :channel-name="channelName"
         :has-available-bridge="hasAvailableBridge"
         :has-active-connection="hasActiveConnection"
+        :connected-bridge-count="connectedBridgeCount"
+        :connection-count="connectionCount"
+        :connections-loading="connectionsLoading"
         :debug-ready="debugReady"
         :debug-disabled-reason="debugDisabledReason"
         :connection-label="currentConnectionLabel"
@@ -162,6 +165,10 @@ export default {
       const fallback = current || this.connectionItems[0];
       return fallback ? fallback.label : "";
     },
+    connectedBridgeCount() {
+      const source = this.debugForm.account ? this.bridgeOptions : this.bridgeItems;
+      return source.filter((item) => item && item.connected).length;
+    },
     currentDebugAgentOptions() {
       const bridgeKey = this.debugForm.bridgeId;
       const bridgeAgents = (this.inventory.bridgeAgents && this.inventory.bridgeAgents[bridgeKey]) || [];
@@ -197,6 +204,9 @@ export default {
     },
     hasActiveConnection() {
       return this.connectionItems.length > 0;
+    },
+    connectionCount() {
+      return this.connectionItems.length;
     },
     debugReady() {
       return this.hasAvailableBridge;
@@ -851,14 +861,14 @@ export default {
       }
       if (event.type === "device_push_started") {
         return {
-          text: "正在推送结果到设备",
+          text: "正在推送结果到 ESP32",
           meta,
           tone: "info",
         };
       }
       if (event.type === "device_push_succeeded") {
         return {
-          text: event.message || "结果已推送到设备",
+          text: event.message || "结果已推送到 ESP32",
           meta,
           tone: "success",
         };

@@ -17,16 +17,17 @@
         :disable-clear-session="!debugForm.account || !debugForm.debugSessionId"
         :debug-clearing="debugClearing"
         :debug-messages="debugMessages"
+        :debug-status-events="debugStatusEvents"
         :debug-history-sessions="debugHistorySessions"
-        :selected-agent-needs-inventory-sync="selectedAgentNeedsInventorySync"
         :input-text="debugForm.inputText"
-        :composer-note="composerNote"
         :debug-sending="debugSending"
         :can-send-direct-chat="canSendDirectChat"
         :has-browser-audio="Boolean(latestBrowserAudioText)"
+        :debug-pending="debugPending"
         @create-session="createDebugSession"
         @clear-session="clearDebugSession"
         @restore-history="restoreDebugHistory"
+        @delete-history="deleteDebugHistory"
         @update:input-text="updateDebugInputText"
         @send="sendDirectChat"
         @play-audio="playLatestBrowserAudio"
@@ -42,8 +43,6 @@
         :connections-loading="connectionsLoading"
         :connection-items="connectionItems"
         :connection-key="debugForm.connectionKey"
-        :has-connection-context="hasConnectionContext"
-        :current-connection-label="currentConnectionLabel"
         :show-bridge-selector="showBridgeSelector"
         :bridge-options="bridgeOptions"
         :bridge-id="debugForm.bridgeId"
@@ -67,7 +66,21 @@ import OpenClawDebugControlPanel from "@/components/openclaw/OpenClawDebugContro
 
 const createDebugSessionId = () => `web-debug-${Date.now()}`;
 const DEBUG_HISTORY_PREFIX = "openclaw-debug-history:";
+const MAX_DEBUG_HISTORY_SESSIONS = 6;
+const MAX_DEBUG_HISTORY_MESSAGES = 30;
+const MAX_DEBUG_STATUS_EVENTS = 24;
 const buildConnectionKey = (item = {}) => `${item.sessionId || ""}::${item.deviceId || ""}`;
+const STATUS_EVENT_TYPES = new Set([
+  "accepted",
+  "agent_bound",
+  "subagent_spawned",
+  "subagent_completed",
+  "browser_audio_ready",
+  "device_push_started",
+  "device_push_succeeded",
+  "device_push_failed",
+  "failed",
+]);
 
 const createEmptyDebugForm = () => ({
   account: "",
@@ -104,8 +117,26 @@ const formatHistoryTime = (timestamp) => {
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `${date.getMonth() + 1}/${date.getDate()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
+
+const normalizeHistoryEntry = (item = {}) => ({
+  sessionId: typeof item.sessionId === "string" ? item.sessionId : "",
+  account: typeof item.account === "string" ? item.account : "",
+  bridgeId: typeof item.bridgeId === "string" ? item.bridgeId : "",
+  connectionKey: typeof item.connectionKey === "string" ? item.connectionKey : "",
+  targetSessionId: typeof item.targetSessionId === "string" ? item.targetSessionId : "",
+  targetDeviceId: typeof item.targetDeviceId === "string" ? item.targetDeviceId : "",
+  agentId: typeof item.agentId === "string" ? item.agentId : "",
+  agentName: typeof item.agentName === "string" ? item.agentName : "",
+  pushToDevice: Boolean(item.pushToDevice),
+  browserAudio: item.browserAudio !== false,
+  traceNextSeq: Number.isInteger(item.traceNextSeq) ? item.traceNextSeq : 0,
+  latestBrowserAudioText: typeof item.latestBrowserAudioText === "string" ? item.latestBrowserAudioText : "",
+  updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),
+  messages: Array.isArray(item.messages) ? item.messages.slice(-MAX_DEBUG_HISTORY_MESSAGES) : [],
+  statusEvents: Array.isArray(item.statusEvents) ? item.statusEvents.slice(-MAX_DEBUG_STATUS_EVENTS) : [],
+});
 
 export default {
   name: "OpenClawDebugDialog",
@@ -144,9 +175,11 @@ export default {
       dialogVisible: false,
       debugForm: createEmptyDebugForm(),
       debugMessages: [],
+      debugStatusEvents: [],
       debugHistorySessions: [],
       debugSending: false,
       debugClearing: false,
+      debugPending: false,
       routePrefillApplied: false,
       debugTraceSeq: 0,
       debugPollingTimer: null,
@@ -195,21 +228,6 @@ export default {
       const matched = this.runtimeAccounts.find((item) => item.value === this.debugForm.account);
       return matched ? matched.label : (this.debugForm.account || "自动选择");
     },
-    selectedConnection() {
-      return this.connectionItems.find((item) => item.value === this.debugForm.connectionKey) || null;
-    },
-    currentConnectionLabel() {
-      if (this.connectionsLoading) {
-        return "正在加载连接";
-      }
-      if (this.selectedConnection) {
-        return this.selectedConnection.label;
-      }
-      if (!this.connectionItems.length) {
-        return "暂无在线连接";
-      }
-      return "未指定真实设备";
-    },
     currentDebugAgentOptions() {
       const bridgeKey = this.debugForm.bridgeId;
       const bridgeAgents = (this.inventory.bridgeAgents && this.inventory.bridgeAgents[bridgeKey]) || [];
@@ -249,18 +267,6 @@ export default {
       }
       const matched = this.currentDebugAgentOptions.find((item) => item.value === this.debugForm.agentId);
       return Boolean(matched && matched.ghost);
-    },
-    hasConnectionContext() {
-      return Boolean(this.debugForm.sessionId || this.debugForm.deviceId);
-    },
-    composerNote() {
-      if (this.hasConnectionContext) {
-        if (this.debugForm.pushToDevice) {
-          return `结果会先回调试面板，并在完成后同步推送到 ${this.currentConnectionLabel}。`;
-        }
-        return `结果只回当前调试面板；已绑定 ${this.currentConnectionLabel}，但本会话不会自动推送设备。`;
-      }
-      return "结果会回到当前调试面板；未绑定真实设备上下文时，不会主动推送到设备。";
     },
     canSendDirectChat() {
       return Boolean(
@@ -339,9 +345,11 @@ export default {
       this.stopBrowserAudio();
       this.debugForm = createEmptyDebugForm();
       this.debugMessages = [];
+      this.debugStatusEvents = [];
       this.debugHistorySessions = [];
       this.debugSending = false;
       this.debugClearing = false;
+      this.debugPending = false;
       this.routePrefillApplied = false;
       this.debugTraceSeq = 0;
       this.latestBrowserAudioText = "";
@@ -355,30 +363,35 @@ export default {
         return;
       }
       this.debugHistorySessions = safeParseHistory(window.localStorage.getItem(this.getHistoryStorageKey()))
-        .map((item) => ({
-          ...item,
-          updatedAtText: formatHistoryTime(item.updatedAt),
-        }))
+        .map((item) => {
+          const normalized = normalizeHistoryEntry(item);
+          return {
+            ...normalized,
+            updatedAtText: formatHistoryTime(normalized.updatedAt),
+          };
+        })
         .filter((item) => item && item.sessionId);
     },
     persistDebugHistory() {
       if (!this.channelId || typeof window === "undefined") {
         return;
       }
-      window.localStorage.setItem(this.getHistoryStorageKey(), JSON.stringify(this.debugHistorySessions));
+      const serialized = this.debugHistorySessions.map((item) => normalizeHistoryEntry(item));
+      window.localStorage.setItem(this.getHistoryStorageKey(), JSON.stringify(serialized));
     },
     syncCurrentHistoryEntry() {
       if (!this.channelId || !this.debugForm.debugSessionId) {
         return;
       }
       const sessionId = this.debugForm.debugSessionId;
-      if (!this.debugMessages.length) {
+      if (!this.debugMessages.length && !this.debugStatusEvents.length) {
         this.debugHistorySessions = this.debugHistorySessions.filter((item) => item.sessionId !== sessionId);
         this.persistDebugHistory();
         return;
       }
-      const lastMessage = this.debugMessages[this.debugMessages.length - 1] || {};
       const now = Date.now();
+      const latestMessage = this.debugMessages[this.debugMessages.length - 1];
+      const latestStatus = this.debugStatusEvents[this.debugStatusEvents.length - 1];
       const entry = {
         sessionId,
         account: this.debugForm.account,
@@ -392,15 +405,18 @@ export default {
         browserAudio: this.debugForm.browserAudio,
         traceNextSeq: this.debugTraceSeq,
         latestBrowserAudioText: this.latestBrowserAudioText,
-        preview: (lastMessage.text || "").slice(0, 72),
         updatedAt: now,
-        updatedAtText: formatHistoryTime(now),
-        messages: this.debugMessages,
+        messages: this.debugMessages.slice(-MAX_DEBUG_HISTORY_MESSAGES),
+        statusEvents: this.debugStatusEvents.slice(-MAX_DEBUG_STATUS_EVENTS),
+        preview: (latestMessage && latestMessage.text) || (latestStatus && latestStatus.text) || "",
       };
       this.debugHistorySessions = [
-        entry,
+        {
+          ...entry,
+          updatedAtText: formatHistoryTime(now),
+        },
         ...this.debugHistorySessions.filter((item) => item.sessionId !== sessionId),
-      ].slice(0, 12);
+      ].slice(0, MAX_DEBUG_HISTORY_SESSIONS);
       this.persistDebugHistory();
     },
     restoreLatestHistory() {
@@ -527,6 +543,8 @@ export default {
       this.latestBrowserAudioText = "";
       this.debugForm.debugSessionId = createDebugSessionId();
       this.debugMessages = [];
+      this.debugStatusEvents = [];
+      this.debugPending = false;
       this.debugTraceSeq = 0;
       this.syncCurrentHistoryEntry();
       this.$message.success("已创建新的 OpenClaw 调试会话");
@@ -538,6 +556,8 @@ export default {
       if (!preserveTranscript) {
         this.debugMessages = [];
       }
+      this.debugStatusEvents = [];
+      this.debugPending = false;
       this.debugTraceSeq = 0;
       this.syncCurrentHistoryEntry();
     },
@@ -552,6 +572,21 @@ export default {
         text,
         meta: extra.meta || "",
       });
+      this.syncCurrentHistoryEntry();
+    },
+    appendDebugStatus(text, extra = {}) {
+      const customId = extra.id;
+      if (customId && this.debugStatusEvents.some((item) => item.id === customId)) {
+        return;
+      }
+      this.debugStatusEvents.push({
+        id: customId || `status-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        text,
+        meta: extra.meta || "",
+        tone: extra.tone || "info",
+        eventType: extra.eventType || "system",
+      });
+      this.debugStatusEvents = this.debugStatusEvents.slice(-MAX_DEBUG_STATUS_EVENTS);
       this.syncCurrentHistoryEntry();
     },
     restoreDebugHistory(item, showMessage = true) {
@@ -575,11 +610,30 @@ export default {
       this.syncDebugAgent();
       this.debugForm.debugSessionId = item.sessionId;
       this.debugMessages = Array.isArray(item.messages) ? item.messages : [];
+      this.debugStatusEvents = Array.isArray(item.statusEvents) ? item.statusEvents : [];
       this.debugTraceSeq = Number.isInteger(item.traceNextSeq) ? item.traceNextSeq : 0;
       this.latestBrowserAudioText = item.latestBrowserAudioText || "";
       if (showMessage) {
         this.$message.success("已恢复本地调试历史");
       }
+    },
+    deleteDebugHistory(sessionId) {
+      if (!sessionId) {
+        return;
+      }
+      const isCurrentSession = sessionId === this.debugForm.debugSessionId;
+      this.debugHistorySessions = this.debugHistorySessions.filter((item) => item.sessionId !== sessionId);
+      this.persistDebugHistory();
+      if (isCurrentSession) {
+        this.stopDebugPolling();
+        this.stopBrowserAudio();
+        this.latestBrowserAudioText = "";
+        this.debugMessages = [];
+        this.debugStatusEvents = [];
+        this.debugTraceSeq = 0;
+        this.debugForm.debugSessionId = createDebugSessionId();
+      }
+      this.$message.success("历史会话已删除");
     },
     clearDebugSession() {
       if (!this.channelId || !this.debugForm.account || !this.debugForm.debugSessionId) {
@@ -600,19 +654,23 @@ export default {
         }, ({ data }) => {
           this.debugClearing = false;
           if (data.code === 0) {
-            const clearedSessionId = this.debugForm.debugSessionId;
-            this.appendDebugMessage("system", `已清空 OpenClaw 调试会话：${clearedSessionId}`);
             this.rotateDebugSession(true);
             this.$message.success("OpenClaw 调试会话已清空");
             return;
           }
           const message = data.msg || "清空 OpenClaw 调试会话失败";
-          this.appendDebugMessage("system", message);
+          this.appendDebugStatus(message, {
+            tone: "danger",
+            eventType: "clear_session_failed",
+          });
           this.$message.error(message);
         }, ({ data }) => {
           this.debugClearing = false;
           const message = (data && data.msg) || "清空 OpenClaw 调试会话失败";
-          this.appendDebugMessage("system", message);
+          this.appendDebugStatus(message, {
+            tone: "danger",
+            eventType: "clear_session_failed",
+          });
           this.$message.error(message);
         });
       }).catch(() => {});
@@ -654,6 +712,7 @@ export default {
           if (response.debugSessionId) {
             this.debugForm.debugSessionId = response.debugSessionId;
           }
+          this.debugPending = Boolean(response.accepted);
           this.startDebugPolling(true);
           if (!response.accepted && response.replyText) {
             this.appendDebugMessage("assistant", response.replyText, {
@@ -662,17 +721,24 @@ export default {
           }
           return;
         }
-        this.appendDebugMessage("system", data.msg || "OpenClaw 在线调试失败");
+        this.appendDebugStatus(data.msg || "OpenClaw 在线调试失败", {
+          tone: "danger",
+          eventType: "send_failed",
+        });
         this.$message.error(data.msg || "OpenClaw 在线调试失败");
       }, ({ data }) => {
         this.debugSending = false;
         const message = (data && data.msg) || "OpenClaw 在线调试失败";
-        this.appendDebugMessage("system", message);
+        this.appendDebugStatus(message, {
+          tone: "danger",
+          eventType: "send_failed",
+        });
         this.$message.error(message);
       });
     },
     startDebugPolling(immediate = false) {
       this.stopDebugPolling();
+      this.debugPending = true;
       if (immediate) {
         this.fetchDebugSessionTrace();
         return;
@@ -683,6 +749,7 @@ export default {
     },
     scheduleDebugPolling() {
       this.stopDebugPolling();
+      this.debugPending = true;
       this.debugPollingTimer = window.setTimeout(() => {
         this.fetchDebugSessionTrace();
       }, 1000);
@@ -692,6 +759,7 @@ export default {
         window.clearTimeout(this.debugPollingTimer);
         this.debugPollingTimer = null;
       }
+      this.debugPending = false;
     },
     fetchDebugSessionTrace() {
       if (!this.channelId || !this.debugForm.debugSessionId) {
@@ -704,7 +772,10 @@ export default {
         sinceSeq: this.debugTraceSeq,
       }, ({ data }) => {
         if (data.code !== 0) {
-          this.appendDebugMessage("system", data.msg || "获取调试时间线失败");
+          this.appendDebugStatus(data.msg || "获取调试时间线失败", {
+            tone: "danger",
+            eventType: "trace_failed",
+          });
           this.stopDebugPolling();
           return;
         }
@@ -718,37 +789,113 @@ export default {
           this.latestBrowserAudioText = snapshot.browserAudio.text;
         }
         if (snapshot.pending) {
+          this.debugPending = true;
           this.scheduleDebugPolling();
         } else {
           this.stopDebugPolling();
         }
       }, ({ data }) => {
-        this.appendDebugMessage("system", (data && data.msg) || "获取调试时间线失败");
+        this.appendDebugStatus((data && data.msg) || "获取调试时间线失败", {
+          tone: "danger",
+          eventType: "trace_failed",
+        });
         this.stopDebugPolling();
       });
+    },
+    formatTraceStatus(event) {
+      const agentLabel = event.agentName || event.agentId || "";
+      const meta = [agentLabel, event.status].filter(Boolean).join(" / ");
+      const fallbackText = event.title
+        ? `${event.title}${event.message ? `：${event.message}` : ""}`
+        : (event.message || event.type);
+
+      if (event.type === "accepted") {
+        return {
+          text: "调试请求已提交，等待 OpenClaw 处理",
+          meta,
+          tone: "info",
+        };
+      }
+      if (event.type === "agent_bound") {
+        return {
+          text: `已绑定 Agent：${agentLabel || "未知 Agent"}`,
+          meta,
+          tone: "primary",
+        };
+      }
+      if (event.type === "subagent_spawned") {
+        return {
+          text: `子 Agent 已启动：${agentLabel || event.message || "后台任务"}`,
+          meta,
+          tone: "warning",
+        };
+      }
+      if (event.type === "subagent_completed") {
+        return {
+          text: `子 Agent 已完成：${agentLabel || event.message || "后台任务"}`,
+          meta,
+          tone: "success",
+        };
+      }
+      if (event.type === "browser_audio_ready") {
+        return {
+          text: "浏览器语音已就绪",
+          meta,
+          tone: "success",
+        };
+      }
+      if (event.type === "device_push_started") {
+        return {
+          text: "正在推送结果到设备",
+          meta,
+          tone: "info",
+        };
+      }
+      if (event.type === "device_push_succeeded") {
+        return {
+          text: event.message || "结果已推送到设备",
+          meta,
+          tone: "success",
+        };
+      }
+      if (event.type === "device_push_failed" || event.type === "failed") {
+        return {
+          text: fallbackText,
+          meta,
+          tone: "danger",
+        };
+      }
+
+      return {
+        text: fallbackText,
+        meta,
+        tone: "info",
+      };
     },
     consumeTraceEvent(event) {
       if (!event || !event.type) {
         return;
       }
       const eventId = `trace-${event.seq || Date.now()}-${event.type}`;
-      const meta = [event.agentName || event.agentId, event.status].filter(Boolean).join(" / ");
       if (event.type === "reply_ready") {
         this.appendDebugMessage("assistant", event.message || "OpenClaw 已生成最终回复", {
           id: eventId,
-          meta,
+          meta: [event.agentName || event.agentId, event.status].filter(Boolean).join(" / "),
         });
         return;
       }
       if (event.type === "browser_audio_ready") {
         this.latestBrowserAudioText = (event.payload && event.payload.text) || this.latestBrowserAudioText;
       }
-      const systemText = event.title
-        ? `${event.title}${event.message ? `：${event.message}` : ""}`
-        : (event.message || event.type);
-      this.appendDebugMessage("system", systemText, {
+      const statusEvent = this.formatTraceStatus(event);
+      if (!STATUS_EVENT_TYPES.has(event.type) && !statusEvent.text) {
+        return;
+      }
+      this.appendDebugStatus(statusEvent.text, {
         id: eventId,
-        meta,
+        meta: statusEvent.meta,
+        tone: statusEvent.tone,
+        eventType: event.type,
       });
     },
     playLatestBrowserAudio() {
@@ -776,6 +923,12 @@ export default {
 
 <style scoped>
 ::v-deep .openclaw-debug-dialog {
+  width: min(1240px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 24px);
+  margin: 12px auto !important;
+  display: flex;
+  flex-direction: column;
   border-radius: 30px;
   overflow: hidden;
 }
@@ -790,26 +943,48 @@ export default {
 }
 
 ::v-deep .openclaw-debug-dialog .el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: 18px 22px 22px;
-  background: #f5f7fb;
+  background: #ffffff;
 }
 
 .debug-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-  min-height: 74vh;
+  gap: 10px;
+  height: min(78vh, 820px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 1180px) {
   .debug-shell {
     grid-template-columns: 1fr;
+    height: min(78vh, 880px);
   }
 }
 
 @media (max-width: 760px) {
+  ::v-deep .openclaw-debug-dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 12px);
+    margin: 6px auto !important;
+  }
+
+  ::v-deep .openclaw-debug-dialog .el-dialog__header {
+    padding: 18px 18px 0;
+  }
+
+  ::v-deep .openclaw-debug-dialog .el-dialog__body {
+    padding: 14px;
+  }
+
   .debug-shell {
     gap: 12px;
+    height: min(82vh, 920px);
   }
 }
 </style>

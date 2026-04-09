@@ -2,14 +2,12 @@
   <section class="debug-stage">
     <div class="stage-header">
       <div class="stage-header-main">
-        <div class="stage-eyebrow">在线调试</div>
         <div class="stage-title-row">
           <h3 class="stage-title">{{ channelName }}</h3>
           <span class="stage-status" :class="{ offline: !hasAvailableBridge }">
             {{ hasAvailableBridge ? "Bridge 在线" : "等待 Bridge" }}
           </span>
         </div>
-        <div class="stage-subtitle">当前 Agent：{{ agentLabel }}</div>
       </div>
       <div class="stage-toolbar">
         <el-button
@@ -33,47 +31,67 @@
       </div>
     </div>
 
-    <div class="stage-meta">
-      <span class="meta-item">Runtime：{{ currentRuntimeLabel }}</span>
-      <span class="meta-item">Agent：{{ agentLabel }}</span>
-      <span class="meta-item">会话：{{ debugSessionId }}</span>
-    </div>
-
     <div class="stage-body">
       <aside class="history-rail">
         <div class="history-rail-header">
-          <div>
-            <div class="sidebar-eyebrow">Sessions</div>
-            <h4 class="history-rail-title">会话</h4>
-          </div>
+          <h4 class="history-rail-title">会话</h4>
           <el-button size="mini" plain @click="$emit('create-session')">新建</el-button>
         </div>
         <div class="history-rail-body">
           <div v-if="debugHistorySessions.length" class="history-list">
-            <button
+            <div
               v-for="item in debugHistorySessions"
               :key="item.sessionId"
               class="history-item"
               :class="{ active: item.sessionId === debugSessionId }"
+              role="button"
+              tabindex="0"
               @click="$emit('restore-history', item)"
+              @keydown.enter.prevent="$emit('restore-history', item)"
             >
-              <div class="history-head">
-                <span class="history-session">{{ item.sessionId }}</span>
-                <span class="history-time">{{ item.updatedAtText }}</span>
+              <div class="history-main">
+                <div class="history-head">
+                  <span class="history-session" :title="item.sessionId">{{ historyLabel(item.sessionId) }}</span>
+                  <span class="history-time">{{ item.updatedAtText }}</span>
+                </div>
               </div>
-              <div class="history-meta">{{ item.agentName || item.agentId || "-" }}</div>
-              <div class="history-preview">{{ item.preview || "暂无预览" }}</div>
-            </button>
+              <el-button
+                class="history-delete"
+                type="text"
+                icon="el-icon-close"
+                @click.stop="$emit('delete-history', item.sessionId)"
+              />
+            </div>
           </div>
-          <div v-else class="history-empty">当前 channel 还没有本地调试历史。</div>
+          <div v-else class="history-empty">暂无会话</div>
         </div>
       </aside>
 
       <div class="chat-column">
+        <div v-if="debugPending || visibleStatusEvents.length" class="status-strip">
+          <div class="status-strip-head">
+            <span class="status-strip-title">执行状态</span>
+            <span v-if="debugPending" class="status-pill tone-warning">处理中</span>
+          </div>
+          <div class="status-event-list">
+            <div
+              v-for="item in visibleStatusEvents"
+              :key="item.id"
+              class="status-event"
+            >
+              <span class="status-pill" :class="statusToneClass(item.tone)">{{ statusToneLabel(item.tone) }}</span>
+              <div class="status-copy">
+                <div class="status-text">{{ item.text }}</div>
+                <div v-if="item.meta" class="status-meta">{{ item.meta }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div ref="transcript" class="debug-transcript">
-          <div v-if="debugMessages.length" class="message-list">
+          <div v-if="visibleMessages.length" class="message-list">
             <article
-              v-for="item in debugMessages"
+              v-for="item in visibleMessages"
               :key="item.id"
               class="message-row"
               :class="`role-${item.role}`"
@@ -90,26 +108,18 @@
           </div>
           <div v-else class="empty-state">
             <div class="empty-icon">AI</div>
-            <h4 class="empty-title">开始一轮调试对话</h4>
-            <p class="empty-description">先在右侧确认 Agent 和上下文，再在底部输入消息，直接验证当前 OpenClaw Agent 的回复。</p>
+            <h4 class="empty-title">开始调试</h4>
           </div>
         </div>
 
         <div class="composer-panel">
           <div class="composer-head">
-            <div>
-              <div class="composer-eyebrow">Current Target</div>
-              <div class="composer-target">{{ agentLabel }}</div>
-            </div>
+            <div class="composer-target">{{ agentLabel }}</div>
             <div class="composer-runtime">{{ currentRuntimeLabel }}</div>
           </div>
 
           <div v-if="!hasAvailableBridge" class="runtime-warning">
             当前 runtime 没有在线的 OpenClaw bridge，暂时不能发送调试消息。
-          </div>
-
-          <div v-if="selectedAgentNeedsInventorySync" class="field-hint warning composer-warning">
-            当前 Agent 来自业务绑定，inventory 还没回传它。可先保留该选择，但要等对应 runtime 有在线 bridge 后才能真正调试。
           </div>
 
           <el-input
@@ -118,12 +128,11 @@
             type="textarea"
             :rows="5"
             resize="none"
-            placeholder="输入要发送给 OpenClaw 的测试消息。按 Ctrl + Enter 快速发送。"
+            placeholder="输入测试消息，Ctrl + Enter 发送"
             @keyup.ctrl.enter.native="$emit('send')"
           />
 
           <div class="composer-footer">
-            <span class="composer-note">{{ composerNote }}</span>
             <el-button type="primary" :loading="debugSending" :disabled="!canSendDirectChat" @click="$emit('send')">
               发送测试消息
             </el-button>
@@ -170,19 +179,15 @@ export default {
       type: Array,
       default: () => [],
     },
+    debugStatusEvents: {
+      type: Array,
+      default: () => [],
+    },
     debugHistorySessions: {
       type: Array,
       default: () => [],
     },
-    selectedAgentNeedsInventorySync: {
-      type: Boolean,
-      default: false,
-    },
     inputText: {
-      type: String,
-      default: "",
-    },
-    composerNote: {
       type: String,
       default: "",
     },
@@ -198,6 +203,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    debugPending: {
+      type: Boolean,
+      default: false,
+    },
   },
   computed: {
     localInputText: {
@@ -207,6 +216,14 @@ export default {
       set(value) {
         this.$emit("update:input-text", value);
       },
+    },
+    visibleStatusEvents() {
+      return Array.isArray(this.debugStatusEvents) ? this.debugStatusEvents.slice(-6) : [];
+    },
+    visibleMessages() {
+      return Array.isArray(this.debugMessages)
+        ? this.debugMessages.filter((item) => item && item.role !== "system")
+        : [];
     },
   },
   watch: {
@@ -236,6 +253,34 @@ export default {
       }
       return "SYS";
     },
+    statusToneClass(tone) {
+      return `tone-${tone || "info"}`;
+    },
+    statusToneLabel(tone) {
+      if (tone === "success") {
+        return "完成";
+      }
+      if (tone === "warning") {
+        return "运行中";
+      }
+      if (tone === "danger") {
+        return "异常";
+      }
+      if (tone === "primary") {
+        return "已路由";
+      }
+      return "状态";
+    },
+    historyLabel(sessionId) {
+      if (!sessionId) {
+        return "未命名";
+      }
+      const normalized = String(sessionId);
+      if (normalized.startsWith("web-debug-")) {
+        return `#${normalized.slice(-6)}`;
+      }
+      return normalized.length > 10 ? `${normalized.slice(0, 10)}...` : normalized;
+    },
     scrollToBottom() {
       this.$nextTick(() => {
         const container = this.$refs.transcript;
@@ -253,11 +298,8 @@ export default {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 22px;
-  border-radius: 20px;
-  background: #ffffff;
-  border: 1px solid #e4e9f4;
-  box-shadow: 0 8px 24px rgba(87, 104, 142, 0.08);
+  padding: 10px 8px 8px;
+  background: transparent;
 }
 
 .stage-header {
@@ -271,20 +313,10 @@ export default {
   min-width: 0;
 }
 
-.stage-eyebrow,
-.sidebar-eyebrow,
-.composer-eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #7c8ca7;
-}
-
 .stage-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 6px;
 }
 
 .stage-title {
@@ -292,12 +324,6 @@ export default {
   color: #18243d;
   font-size: 24px;
   line-height: 1.2;
-}
-
-.stage-subtitle {
-  margin-top: 8px;
-  color: #66758f;
-  line-height: 1.5;
 }
 
 .stage-status {
@@ -321,54 +347,39 @@ export default {
   justify-content: flex-end;
 }
 
-.stage-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  margin-top: 14px;
-  color: #6d7c96;
-  font-size: 13px;
-}
-
-.meta-item {
-  white-space: nowrap;
-}
-
 .stage-body {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .history-rail {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid #e6ebf5;
-  background: #fbfcfe;
+  padding: 0;
+  background: transparent;
 }
 
 .history-rail-header {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .history-rail-title {
-  margin: 6px 0 0;
+  margin: 0;
   color: #22314f;
   font-size: 16px;
 }
 
 .history-rail-body {
   min-height: 0;
-  margin-top: 14px;
+  margin-top: 10px;
   overflow-y: auto;
 }
 
@@ -379,30 +390,38 @@ export default {
 }
 
 .history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #e6ebf4;
-  border-radius: 14px;
-  background: #ffffff;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
 .history-item:hover {
-  border-color: #d6dff0;
-  background: #f8fafc;
+  background: rgba(227, 233, 244, 0.55);
 }
 
 .history-item.active {
-  border-color: #cfdcf8;
-  background: #f1f5ff;
+  background: rgba(221, 230, 252, 0.9);
+}
+
+.history-main {
+  min-width: 0;
+  flex: 1;
 }
 
 .history-head {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  align-items: center;
 }
 
 .history-session {
@@ -411,51 +430,140 @@ export default {
 }
 
 .history-time,
-.history-meta,
-.history-preview,
 .history-empty {
   color: #70809a;
   line-height: 1.6;
+}
+
+.history-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.history-delete {
+  flex: 0 0 auto;
+  padding: 0;
+  color: #97a4ba;
+}
+
+.history-delete:hover,
+.history-delete:focus {
+  color: #d14f4f;
 }
 
 .history-empty {
   padding: 10px 2px;
 }
 
-.history-meta {
-  margin-top: 6px;
-}
-
-.history-preview {
-  margin-top: 4px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .chat-column {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  gap: 14px;
+  gap: 10px;
+}
+
+.status-strip {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid #e5ebf4;
+  background: #f8fafc;
+}
+
+.status-strip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-strip-title {
+  color: #22314f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.status-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  background: #edf2fb;
+  color: #3e5278;
+}
+
+.status-pill.tone-primary {
+  background: #eef4ff;
+  color: #315ca8;
+}
+
+.status-pill.tone-info {
+  background: #edf2fb;
+  color: #3e5278;
+}
+
+.status-pill.tone-warning {
+  background: #fff4de;
+  color: #b26a19;
+}
+
+.status-pill.tone-success {
+  background: #edf7f1;
+  color: #1f7a49;
+}
+
+.status-pill.tone-danger {
+  background: #fff0ee;
+  color: #c24c45;
+}
+
+.status-copy {
+  min-width: 0;
+}
+
+.status-text {
+  color: #24324d;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.status-meta {
+  margin-top: 2px;
+  color: #7a88a0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .debug-transcript {
   flex: 1;
   min-height: 0;
-  padding: 8px 6px 6px;
+  padding: 4px 0 0;
   overflow-y: auto;
-  border-radius: 18px;
-  background: #f8fafc;
-  border: 1px solid #e5ebf4;
+  background: transparent;
 }
 
 .message-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 8px;
+  padding: 4px 2px 8px;
 }
 
 .message-row {
@@ -495,10 +603,10 @@ export default {
 
 .message-card {
   max-width: min(78%, 720px);
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: #ffffff;
-  border: 1px solid #e5ebf4;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 0;
 }
 
 .message-row.role-user .message-card {
@@ -575,28 +683,20 @@ export default {
   font-size: 20px;
 }
 
-.empty-description {
-  max-width: 420px;
-  margin: 10px 0 0;
-  color: #6b7a95;
-  line-height: 1.8;
-}
-
 .composer-panel {
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid #e4eaf4;
-  background: #ffffff;
+  padding: 12px 0 0;
+  border-top: 1px solid #e4eaf4;
+  background: transparent;
 }
 
 .composer-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
 }
 
 .composer-target {
-  margin-top: 6px;
   color: #1c2842;
   font-size: 16px;
   font-weight: 700;
@@ -625,18 +725,6 @@ export default {
   line-height: 1.6;
 }
 
-.composer-warning,
-.field-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #6f7f99;
-}
-
-.field-hint.warning {
-  color: #b26a19;
-}
-
 .composer-input {
   margin-top: 14px;
 }
@@ -645,23 +733,17 @@ export default {
   min-height: 116px;
   border-radius: 14px;
   padding: 12px 14px;
-  border-color: #dde5f2;
+  border-color: #e1e7f1;
   line-height: 1.7;
-  background: #fbfcfe;
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .composer-footer {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+  justify-content: flex-end;
+  align-items: center;
   gap: 10px;
   margin-top: 16px;
-}
-
-.composer-note {
-  flex: 1;
-  color: #71809c;
-  line-height: 1.7;
 }
 
 @media (max-width: 1180px) {
@@ -682,7 +764,7 @@ export default {
   }
 
   .debug-stage {
-    padding: 16px;
+    padding: 8px 0 0;
   }
 
   .stage-title {

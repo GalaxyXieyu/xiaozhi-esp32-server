@@ -156,7 +156,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             return inventory;
         }
 
-        String sourceUrl = buildInventoryUrl(channel);
+        String sourceUrl = buildInventoryUrl(channel, channelId);
         inventory.setSourceUrl(sourceUrl);
 
         try {
@@ -468,11 +468,19 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
 
     private OpenClawChannelDTO normalizeChannel(OpenClawChannelDTO channel, String serverOrigin) {
         OpenClawChannelDTO normalized = new OpenClawChannelDTO();
+        String normalizedOrigin = trimTrailingSlash(serverOrigin);
+        boolean useLocalDefaultBaseUrl = StringUtils.isBlank(channel.getBaseUrl()) && StringUtils.isNotBlank(normalizedOrigin);
+        String accessToken = StringUtils.trimToEmpty(channel.getAccessToken());
+        if (useLocalDefaultBaseUrl && StringUtils.isBlank(accessToken)) {
+            accessToken = resolveLocalAdminToken();
+        }
         normalized.setId(StringUtils.defaultIfBlank(channel.getId(), UUID.randomUUID().toString()));
         normalized.setName(StringUtils.trimToEmpty(channel.getName()));
-        normalized.setBaseUrl(trimTrailingSlash(StringUtils.trimToEmpty(channel.getBaseUrl())));
+        normalized.setBaseUrl(useLocalDefaultBaseUrl
+                ? buildDefaultBaseUrl(normalizedOrigin)
+                : trimTrailingSlash(StringUtils.trimToEmpty(channel.getBaseUrl())));
         normalized.setInventoryPath(normalizeInventoryPath(channel.getInventoryPath()));
-        normalized.setAccessToken(StringUtils.trimToEmpty(channel.getAccessToken()));
+        normalized.setAccessToken(accessToken);
         normalized.setEnabled(channel.getEnabled() == null ? Boolean.TRUE : channel.getEnabled());
         normalized.setRemark(StringUtils.trimToEmpty(channel.getRemark()));
         return normalized;
@@ -602,8 +610,8 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         );
     }
 
-    private String buildInventoryUrl(OpenClawChannelDTO channel) {
-        return trimTrailingSlash(channel.getBaseUrl()) + normalizeInventoryPath(channel.getInventoryPath());
+    private String buildInventoryUrl(OpenClawChannelDTO channel, String channelId) {
+        return buildChannelApiUrl(channel, channel.getInventoryPath(), buildInventoryQuery(channelId));
     }
 
     private String buildChannelApiUrl(OpenClawChannelDTO channel, String path) {
@@ -628,6 +636,10 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             return "";
         }
         return trimTrailingSlash(serverOrigin) + "/admin/openclaw";
+    }
+
+    private String resolveLocalAdminToken() {
+        return StringUtils.trimToEmpty(sysParamsService.getValue(Constant.SERVER_SECRET, true));
     }
 
     private String generateChannelId(String channelName, List<OpenClawChannelDTO> existingChannels) {
@@ -741,6 +753,14 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         query.put("peerId", StringUtils.trimToNull(request.getPeerId()));
         if (Boolean.TRUE.equals(request.getAllowLatest())) {
             query.put("allowLatest", "true");
+        }
+        return query;
+    }
+
+    private Map<String, String> buildInventoryQuery(String channelId) {
+        Map<String, String> query = new LinkedHashMap<>();
+        if (StringUtils.isNotBlank(channelId)) {
+            query.put("account", channelId);
         }
         return query;
     }

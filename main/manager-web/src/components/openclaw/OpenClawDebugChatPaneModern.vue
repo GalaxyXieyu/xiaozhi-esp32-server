@@ -2,7 +2,6 @@
   <section class="modern-stage">
     <header class="modern-header">
       <div class="modern-header-main">
-        <p class="modern-eyebrow">OpenClaw Debug Console</p>
         <div class="modern-title-row">
           <h3 class="modern-title">{{ channelName }}</h3>
           <span class="modern-status" :class="{ offline: !debugReady }">
@@ -30,7 +29,6 @@
       <aside class="sessions-panel">
         <div class="panel-title-row">
           <div>
-            <p class="panel-kicker">Sessions</p>
             <h4 class="panel-title">会话历史</h4>
           </div>
           <span class="panel-count">{{ debugHistorySessions.length }}</span>
@@ -125,6 +123,56 @@
         </div>
 
         <div class="composer-shell">
+          <div class="composer-controls">
+            <div v-if="showRuntimeSelector" class="control-field control-field-runtime">
+              <span class="control-label">Runtime</span>
+              <el-select
+                v-model="selectedAccount"
+                class="control-select"
+                size="small"
+                filterable
+                :disabled="!debugReady"
+                placeholder="选择 runtime/account"
+              >
+                <el-option
+                  v-for="item in runtimeAccounts"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <div class="control-field control-field-agent">
+              <span class="control-label">Agent</span>
+              <el-select
+                v-model="selectedAgentId"
+                class="control-select"
+                size="small"
+                filterable
+                :disabled="!debugReady || !currentDebugAgentOptions.length"
+                placeholder="选择 OpenClaw Agent"
+              >
+                <el-option
+                  v-for="item in currentDebugAgentOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <label class="control-switch">
+              <span class="control-switch-text">推送到设备</span>
+              <el-switch v-model="localPushToDevice" :disabled="!debugReady || !hasActiveConnection" />
+            </label>
+
+            <label class="control-switch">
+              <span class="control-switch-text">浏览器语音</span>
+              <el-switch v-model="localBrowserAudio" :disabled="!debugReady" />
+            </label>
+          </div>
+
           <div v-if="!debugReady" class="composer-note danger">
             {{ debugDisabledReason }}
           </div>
@@ -139,6 +187,17 @@
             当前 Agent 未出现在 inventory 中，建议先同步 OpenClaw inventory。
           </div>
 
+          <div v-if="visibleStatusEvents.length" class="composer-timeline">
+            <div
+              v-for="item in visibleStatusEvents.slice(-3)"
+              :key="item.id || `${item.eventType}-${item.text}`"
+              class="composer-timeline-item"
+            >
+              <span class="composer-timeline-dot" :class="statusToneClass(item.tone)"></span>
+              <span class="composer-timeline-text">{{ item.text }}</span>
+            </div>
+          </div>
+
           <el-input
             v-model="localInputText"
             class="composer-input"
@@ -151,112 +210,18 @@
 
           <div class="composer-footer">
             <div class="composer-tip">Ctrl + Enter 发送，沿用原有接口与轮询逻辑</div>
-            <el-button type="primary" :loading="debugSending" :disabled="!canSendDirectChat" @click="$emit('send')">
-              发送调试消息
+            <el-button
+              type="primary"
+              icon="el-icon-position"
+              :loading="debugSending"
+              :disabled="!canSendDirectChat"
+              @click="$emit('send')"
+            >
+              发送
             </el-button>
           </div>
         </div>
       </div>
-
-      <aside class="settings-panel">
-        <section class="settings-card">
-          <div class="panel-title-row slim">
-            <div>
-              <p class="panel-kicker">Routing</p>
-              <h4 class="panel-title">调试设置</h4>
-            </div>
-          </div>
-
-          <div v-if="showRuntimeSelector" class="setting-field">
-            <label class="setting-label">Runtime / Account</label>
-            <el-select
-              v-model="selectedAccount"
-              class="setting-select"
-              filterable
-              :disabled="!debugReady"
-              placeholder="连接成功后选择 runtime/account"
-            >
-              <el-option
-                v-for="item in runtimeAccounts"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </div>
-
-          <div class="setting-field">
-            <label class="setting-label">OpenClaw Agent</label>
-            <el-select
-              v-model="selectedAgentId"
-              class="setting-select"
-              filterable
-              :disabled="!debugReady || !currentDebugAgentOptions.length"
-              placeholder="连接成功后选择 OpenClaw Agent"
-            >
-              <el-option
-                v-for="item in currentDebugAgentOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </div>
-        </section>
-
-        <section class="settings-card">
-          <div class="panel-title-row slim">
-            <div>
-              <p class="panel-kicker">Output</p>
-              <h4 class="panel-title">结果设置</h4>
-            </div>
-          </div>
-
-          <label class="toggle-row">
-            <div>
-              <span class="toggle-title">推送到设备</span>
-              <span class="toggle-desc">有在线设备时，把本次回复同步推送到设备端。</span>
-            </div>
-            <el-switch v-model="localPushToDevice" :disabled="!debugReady || !hasActiveConnection" />
-          </label>
-
-          <label class="toggle-row">
-            <div>
-              <span class="toggle-title">浏览器语音</span>
-              <span class="toggle-desc">回复完成后允许在浏览器内直接试听语音。</span>
-            </div>
-            <el-switch v-model="localBrowserAudio" :disabled="!debugReady" />
-          </label>
-        </section>
-
-        <section class="settings-card timeline-card">
-          <div class="panel-title-row slim">
-            <div>
-              <p class="panel-kicker">Timeline</p>
-              <h4 class="panel-title">调试时间线</h4>
-            </div>
-          </div>
-
-          <div v-if="visibleStatusEvents.length" class="timeline-list">
-            <div
-              v-for="item in visibleStatusEvents"
-              :key="item.id || `${item.eventType}-${item.text}`"
-              class="timeline-item"
-            >
-              <span class="timeline-dot" :class="statusToneClass(item.tone)"></span>
-              <div class="timeline-body">
-                <div class="timeline-head">
-                  <span class="timeline-label">{{ statusToneLabel(item.tone) }}</span>
-                  <span v-if="item.eventType" class="timeline-type">{{ item.eventType }}</span>
-                </div>
-                <div class="timeline-text">{{ item.text }}</div>
-                <div v-if="item.meta" class="timeline-meta">{{ item.meta }}</div>
-              </div>
-            </div>
-          </div>
-          <div v-else class="timeline-empty">调试状态会在发送后按时间顺序展示。</div>
-        </section>
-      </aside>
     </div>
   </section>
 </template>

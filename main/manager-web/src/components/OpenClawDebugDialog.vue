@@ -8,16 +8,7 @@
     :before-close="handleClose"
   >
     <div class="debug-shell">
-      <div class="debug-view-switch">
-        <span class="debug-view-switch-label">界面版本</span>
-        <el-radio-group v-model="debugUiVersion" size="small">
-          <el-radio-button label="modern">新版</el-radio-button>
-          <el-radio-button label="classic">经典版</el-radio-button>
-        </el-radio-group>
-      </div>
-
-      <component
-        :is="activeDebugPaneComponent"
+      <OpenClawDebugChatPaneModern
         :channel-name="channelName"
         :has-available-bridge="hasAvailableBridge"
         :has-active-connection="hasActiveConnection"
@@ -62,13 +53,11 @@
 
 <script>
 import Api from "@/apis/api";
-import OpenClawDebugChatPane from "@/components/openclaw/OpenClawDebugChatPane.vue";
 import OpenClawDebugChatPaneModern from "@/components/openclaw/OpenClawDebugChatPaneModern.vue";
 import {
   buildConnectionKey,
   createEmptyDebugForm,
   DEBUG_HISTORY_PREFIX,
-  DEBUG_UI_MODE_KEY,
   formatHistoryTime,
   MAX_DEBUG_HISTORY_MESSAGES,
   MAX_DEBUG_HISTORY_SESSIONS,
@@ -83,7 +72,6 @@ import {
 export default {
   name: "OpenClawDebugDialog",
   components: {
-    OpenClawDebugChatPane,
     OpenClawDebugChatPaneModern,
   },
   props: {
@@ -128,7 +116,6 @@ export default {
       debugTraceSeq: 0,
       debugPollingTimer: null,
       latestBrowserAudioText: "",
-      debugUiVersion: "modern",
     };
   },
   computed: {
@@ -237,15 +224,11 @@ export default {
         this.debugForm.inputText.trim()
       );
     },
-    activeDebugPaneComponent() {
-      return this.debugUiVersion === "classic" ? "OpenClawDebugChatPane" : "OpenClawDebugChatPaneModern";
-    },
   },
   watch: {
     visible(val) {
       this.dialogVisible = val;
       if (val) {
-        this.restoreDebugUiMode();
         this.routePrefillApplied = false;
         this.loadDebugHistory();
         this.applyDebugDefaults();
@@ -293,22 +276,8 @@ export default {
         }
       },
     },
-    debugUiVersion(val) {
-      if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.setItem(DEBUG_UI_MODE_KEY, val);
-      }
-    },
   },
   methods: {
-    restoreDebugUiMode() {
-      if (typeof window === "undefined" || !window.localStorage) {
-        return;
-      }
-      const savedMode = window.localStorage.getItem(DEBUG_UI_MODE_KEY);
-      if (savedMode === "classic" || savedMode === "modern") {
-        this.debugUiVersion = savedMode;
-      }
-    },
     handleClose() {
       this.stopDebugPolling();
       this.stopBrowserAudio();

@@ -5,16 +5,18 @@
   margin: 12px auto !important;
   display: flex;
   flex-direction: column;
-  border-radius: 30px;
+  border-radius: 24px;
   overflow: hidden;
+  box-shadow: 0 24px 60px rgba(16, 39, 66, 0.14);
 }
 
 ::v-deep .openclaw-debug-dialog .el-dialog__header {
-  padding: 24px 28px 0;
+  padding: 18px 24px 0;
 }
 
 ::v-deep .openclaw-debug-dialog .el-dialog__title {
   color: #1b2740;
+  font-size: 20px;
   font-weight: 700;
 }
 
@@ -22,31 +24,17 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 18px 22px 22px;
-  background: #ffffff;
+  padding: 14px 18px 18px;
+  background: #fbfcfe;
 }
 
 .debug-shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   height: min(78vh, 820px);
   min-height: 0;
   overflow: hidden;
-}
-
-.debug-view-switch {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 0 8px;
-}
-
-.debug-view-switch-label {
-  color: #62738d;
-  font-size: 13px;
-  font-weight: 600;
 }
 
 @media (max-width: 1180px) {
@@ -73,10 +61,5 @@
 
   .debug-shell {
     height: min(82vh, 920px);
-  }
-
-  .debug-view-switch {
-    flex-direction: column;
-    align-items: flex-start;
   }
 }

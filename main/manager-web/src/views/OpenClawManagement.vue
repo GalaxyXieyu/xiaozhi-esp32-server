@@ -46,6 +46,8 @@
             :inventory-loading="inventoryLoading"
             :bindings-loading="bindingsLoading"
             :selected-runtime-account="selectedRuntimeAccount"
+            :debug-available="debugAvailable"
+            :debug-unavailable-reason="debugUnavailableReason"
             @back="clearSelection"
             @edit="openEditChannel"
             @copy-command="copyInstallCommand"
@@ -235,6 +237,29 @@ export default {
     selectedChannel() {
       const matched = this.channels.find((item) => item.id === this.selectedChannelId);
       return matched || createEmptyChannel();
+    },
+    hasActiveDebugConnection() {
+      return Array.isArray(this.connections) && this.connections.length > 0;
+    },
+    debugAvailable() {
+      return this.selectedChannelConnected
+        && Number(this.inventory.connectedBridgeCount || 0) > 0
+        && this.hasActiveDebugConnection;
+    },
+    debugUnavailableReason() {
+      if (!this.selectedChannelConnected) {
+        return "当前 Channel 尚未连通 OpenClaw。";
+      }
+      if (this.connectionsLoading) {
+        return "正在同步在线连接，请稍候。";
+      }
+      if (Number(this.inventory.connectedBridgeCount || 0) <= 0) {
+        return "当前没有在线 Bridge，暂时不能调试。";
+      }
+      if (!this.hasActiveDebugConnection) {
+        return "当前没有在线连接，设备建立会话后才能调试。";
+      }
+      return "";
     },
   },
   watch: {
@@ -491,7 +516,6 @@ export default {
           if (this.isInventoryConnected(nextInventory)) {
             this.loadSelectedBindings();
             this.loadSelectedConnections();
-            this.maybeOpenRoutedDebug();
           } else {
             this.channelBindings = [];
             this.connections = [];
@@ -593,13 +617,16 @@ export default {
         this.connectionsLoading = false;
         if (data.code === 0) {
           this.connections = Array.isArray(data.data) ? data.data : [];
+          this.maybeOpenRoutedDebug();
           return;
         }
         this.connections = [];
+        this.maybeOpenRoutedDebug();
         this.$message.error(data.msg || "获取在线连接失败");
       }, ({ data }) => {
         this.connectionsLoading = false;
         this.connections = [];
+        this.maybeOpenRoutedDebug();
         this.$message.error((data && data.msg) || "获取在线连接失败");
       });
     },
@@ -637,11 +664,18 @@ export default {
       if (!this.routePrefill.channelId || this.routePrefill.channelId !== this.selectedChannelId) {
         return;
       }
-      if (!this.inventory.runtimeAccounts.length) {
+      if (!this.inventory.runtimeAccounts.length || this.connectionsLoading || !this.debugAvailable) {
         return;
       }
       this.routePrefillApplied = true;
       this.showDebugDialog = true;
+    },
+    ensureDebugAvailable() {
+      if (this.debugAvailable) {
+        return true;
+      }
+      this.$message.warning(this.debugUnavailableReason || "当前调试条件未满足");
+      return false;
     },
     openCreateChannel() {
       this.editorMode = "create";
@@ -733,6 +767,9 @@ export default {
       this.updateChannelSummary(this.selectedChannelId, summary);
     },
     openDebugForAgent(payload) {
+      if (!this.ensureDebugAvailable()) {
+        return;
+      }
       this.routePrefill = {
         channelId: this.selectedChannelId,
         runtimeAccount: payload && payload.runtimeAccount ? payload.runtimeAccount : this.selectedRuntimeAccount,
@@ -744,6 +781,9 @@ export default {
       this.showDebugDialog = true;
     },
     openDebugForBinding(binding) {
+      if (!this.ensureDebugAvailable()) {
+        return;
+      }
       this.routePrefill = {
         channelId: this.selectedChannelId,
         runtimeAccount: binding && binding.runtimeAccount ? binding.runtimeAccount : this.selectedRuntimeAccount,

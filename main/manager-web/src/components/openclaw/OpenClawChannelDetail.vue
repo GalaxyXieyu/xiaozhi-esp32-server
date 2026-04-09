@@ -34,6 +34,9 @@
           <div>
             <div class="panel-eyebrow">OpenClaw Agents</div>
             <h3 class="panel-title">可调试 Agent</h3>
+            <div v-if="!debugAvailable && debugUnavailableReason" class="panel-note">
+              {{ debugUnavailableReason }}
+            </div>
           </div>
           <el-select
             v-if="showRuntimeSelector"
@@ -74,7 +77,7 @@
             </p>
 
             <div class="agent-actions">
-              <el-button size="mini" type="primary" @click="emitOpenDebug(agent)">开始调试</el-button>
+              <el-button size="mini" type="primary" :disabled="!debugAvailable" @click="emitOpenDebug(agent)">开始调试</el-button>
               <el-button
                 size="mini"
                 plain
@@ -103,7 +106,7 @@
                       {{ binding.syncStatus || "configured" }}
                     </el-tag>
                     <el-button size="mini" type="text" @click="$emit('open-binding-agent', binding)">查看 Agent</el-button>
-                    <el-button size="mini" type="text" @click="$emit('open-binding-debug', binding)">调试</el-button>
+                    <el-button size="mini" type="text" :disabled="!debugAvailable" @click="$emit('open-binding-debug', binding)">调试</el-button>
                   </div>
                 </div>
               </div>
@@ -211,6 +214,14 @@ export default {
       default: false,
     },
     selectedRuntimeAccount: {
+      type: String,
+      default: "",
+    },
+    debugAvailable: {
+      type: Boolean,
+      default: false,
+    },
+    debugUnavailableReason: {
       type: String,
       default: "",
     },
@@ -466,6 +477,13 @@ export default {
   margin: 8px 0 0;
   font-size: 24px;
   color: #1a2640;
+}
+
+.panel-note {
+  margin-top: 8px;
+  color: #7a88a0;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .agent-grid {

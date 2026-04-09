@@ -4,8 +4,8 @@
       <div class="stage-header-main">
         <div class="stage-title-row">
           <h3 class="stage-title">{{ channelName }}</h3>
-          <span class="stage-status" :class="{ offline: !hasAvailableBridge }">
-            {{ hasAvailableBridge ? "Bridge 在线" : "等待 Bridge" }}
+          <span class="stage-status" :class="{ offline: !debugReady }">
+            {{ debugReady ? "调试就绪" : (hasAvailableBridge ? "等待连接" : "等待 Bridge") }}
           </span>
         </div>
       </div>
@@ -115,8 +115,67 @@
             <div class="composer-runtime">{{ currentRuntimeLabel }}</div>
           </div>
 
-          <div v-if="!hasAvailableBridge" class="runtime-warning">
-            当前 runtime 没有在线的 OpenClaw bridge，暂时不能发送调试消息。
+          <div class="composer-settings">
+            <div v-if="showRuntimeSelector" class="setting-field">
+              <label class="setting-label">Runtime / Account</label>
+              <el-select
+                v-model="selectedAccount"
+                class="setting-select"
+                filterable
+                :disabled="!debugReady"
+                placeholder="连接成功后选择 runtime/account"
+              >
+                <el-option
+                  v-for="item in runtimeAccounts"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <div class="setting-field">
+              <label class="setting-label">OpenClaw Agent</label>
+              <el-select
+                v-model="selectedAgentId"
+                class="setting-select"
+                filterable
+                :disabled="!debugReady || !currentDebugAgentOptions.length"
+                placeholder="连接成功后选择 OpenClaw Agent"
+              >
+                <el-option
+                  v-for="item in currentDebugAgentOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <div v-if="selectedAgentNeedsInventorySync" class="setting-warning">
+                当前 Agent 未出现在 inventory 中
+              </div>
+            </div>
+
+            <div class="setting-field">
+              <label class="setting-label">结果</label>
+              <div class="setting-switches">
+                <label class="setting-switch">
+                  <span>推送到设备</span>
+                  <el-switch v-model="localPushToDevice" :disabled="!debugReady" />
+                </label>
+                <label class="setting-switch">
+                  <span>浏览器语音</span>
+                  <el-switch v-model="localBrowserAudio" :disabled="!debugReady" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="connectionLabel" class="connection-note">
+            已自动复用在线连接：{{ connectionLabel }}
+          </div>
+
+          <div v-if="!debugReady" class="runtime-warning">
+            {{ debugDisabledReason }}
           </div>
 
           <el-input
@@ -152,13 +211,61 @@ export default {
       type: Boolean,
       default: false,
     },
+    hasActiveConnection: {
+      type: Boolean,
+      default: false,
+    },
+    debugReady: {
+      type: Boolean,
+      default: false,
+    },
+    debugDisabledReason: {
+      type: String,
+      default: "",
+    },
+    connectionLabel: {
+      type: String,
+      default: "",
+    },
     currentRuntimeLabel: {
+      type: String,
+      default: "",
+    },
+    showRuntimeSelector: {
+      type: Boolean,
+      default: false,
+    },
+    runtimeAccounts: {
+      type: Array,
+      default: () => [],
+    },
+    account: {
       type: String,
       default: "",
     },
     agentLabel: {
       type: String,
       default: "未选择",
+    },
+    currentDebugAgentOptions: {
+      type: Array,
+      default: () => [],
+    },
+    agentId: {
+      type: String,
+      default: "",
+    },
+    selectedAgentNeedsInventorySync: {
+      type: Boolean,
+      default: false,
+    },
+    pushToDevice: {
+      type: Boolean,
+      default: false,
+    },
+    browserAudio: {
+      type: Boolean,
+      default: false,
     },
     debugSessionId: {
       type: String,
@@ -202,6 +309,38 @@ export default {
     },
   },
   computed: {
+    selectedAccount: {
+      get() {
+        return this.account;
+      },
+      set(value) {
+        this.$emit("update:account", value);
+      },
+    },
+    selectedAgentId: {
+      get() {
+        return this.agentId;
+      },
+      set(value) {
+        this.$emit("update:agent-id", value);
+      },
+    },
+    localPushToDevice: {
+      get() {
+        return this.pushToDevice;
+      },
+      set(value) {
+        this.$emit("update:push-to-device", value);
+      },
+    },
+    localBrowserAudio: {
+      get() {
+        return this.browserAudio;
+      },
+      set(value) {
+        this.$emit("update:browser-audio", value);
+      },
+    },
     localInputText: {
       get() {
         return this.inputText;
@@ -231,9 +370,23 @@ export default {
       return null;
     },
     visibleMessages() {
-      return Array.isArray(this.debugMessages)
+      const source = Array.isArray(this.debugMessages)
         ? this.debugMessages.filter((item) => item && item.role !== "system")
         : [];
+      return source.reduce((list, item) => {
+        const last = list[list.length - 1];
+        if (
+          last &&
+          item.role === "assistant" &&
+          last.role === "assistant" &&
+          String(last.text || "").trim() === String(item.text || "").trim()
+        ) {
+          list[list.length - 1] = item;
+          return list;
+        }
+        list.push(item);
+        return list;
+      }, []);
     },
   },
   watch: {
@@ -734,8 +887,69 @@ export default {
   font-weight: 700;
 }
 
-.runtime-warning {
+.composer-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
   margin-top: 14px;
+}
+
+.setting-field {
+  min-width: 0;
+}
+
+.setting-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #5f6f8b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.setting-select {
+  width: 100%;
+}
+
+.setting-warning {
+  margin-top: 8px;
+  color: #b26a19;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.setting-switches {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #e1e7f1;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.setting-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  color: #24344d;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.connection-note {
+  margin-top: 10px;
+  color: #6a7b98;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.runtime-warning {
+  margin-top: 12px;
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid #f2d29d;
@@ -771,6 +985,10 @@ export default {
     grid-template-columns: 1fr;
   }
 
+  .composer-settings {
+    grid-template-columns: 1fr;
+  }
+
   .message-card {
     max-width: 88%;
   }
@@ -781,6 +999,12 @@ export default {
   .composer-head,
   .composer-footer {
     flex-direction: column;
+  }
+
+  .setting-switches {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px 12px;
   }
 
   .debug-stage {

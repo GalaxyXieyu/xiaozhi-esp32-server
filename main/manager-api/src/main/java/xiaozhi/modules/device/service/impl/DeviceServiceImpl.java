@@ -242,7 +242,7 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
 
         if (StringUtils.isBlank(wsUrl) || wsUrl.equals("null")) {
             log.error("WebSocket地址未配置，请登录智控台，在参数管理找到【server.websocket】配置");
-            wsUrl = "ws://xiaozhi.server.com:8000/xiaozhi/v1/";
+            wsUrl = Constant.DEFAULT_SERVER_WEBSOCKET_URL;
             websocket.setUrl(wsUrl);
         } else {
             String[] wsUrls = wsUrl.split("\\;");
@@ -251,7 +251,7 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
                 websocket.setUrl(wsUrls[RandomUtil.randomInt(0, wsUrls.length)]);
             } else {
                 log.error("WebSocket地址未配置，请登录智控台，在参数管理找到【server.websocket】配置");
-                websocket.setUrl("ws://xiaozhi.server.com:8000/xiaozhi/v1/");
+                websocket.setUrl(Constant.DEFAULT_SERVER_WEBSOCKET_URL);
             }
         }
 
@@ -419,13 +419,13 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
 
         if (StringUtils.isNotBlank(cachedCode)) {
             code.setCode(cachedCode);
-            String frontedUrl = sysParamsService.getValue(Constant.SERVER_FRONTED_URL, true);
+            String frontedUrl = resolveFrontedUrl();
             code.setMessage(frontedUrl + "\n" + cachedCode);
             code.setChallenge(deviceId);
         } else {
             String newCode = RandomUtil.randomNumbers(6);
             code.setCode(newCode);
-            String frontedUrl = sysParamsService.getValue(Constant.SERVER_FRONTED_URL, true);
+            String frontedUrl = resolveFrontedUrl();
             code.setMessage(frontedUrl + "\n" + newCode);
             code.setChallenge(deviceId);
 
@@ -477,6 +477,9 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
                             .getRequestAttributes())
                             .getRequest();
                     otaUrl = request.getRequestURL().toString();
+                    if (StringUtils.isBlank(otaUrl)) {
+                        otaUrl = Constant.DEFAULT_SERVER_OTA_URL;
+                    }
                 }
                 // 将URL中的/ota/替换为/otaMag/download/
                 String uuid = UUID.randomUUID().toString();
@@ -488,6 +491,14 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
         firmware.setVersion(ota == null ? currentVersion : ota.getVersion());
         firmware.setUrl(downloadUrl == null ? Constant.INVALID_FIRMWARE_URL : downloadUrl);
         return firmware;
+    }
+
+    private String resolveFrontedUrl() {
+        String frontedUrl = sysParamsService.getValue(Constant.SERVER_FRONTED_URL, true);
+        if (StringUtils.isBlank(frontedUrl) || "null".equals(frontedUrl)) {
+            return Constant.DEFAULT_SERVER_FRONTED_URL;
+        }
+        return frontedUrl;
     }
 
     /**

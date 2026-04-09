@@ -322,9 +322,24 @@ public interface Constant {
     public static final String VERSION = "0.9.2";
 
     /**
+     * 仓库默认公网控制台地址
+     */
+    String DEFAULT_SERVER_FRONTED_URL = "https://dkyyznecfvae.sealoshzh.site";
+
+    /**
+     * 仓库默认公网WebSocket地址
+     */
+    String DEFAULT_SERVER_WEBSOCKET_URL = "wss://dkyyznecfvae.sealoshzh.site/xiaozhi/v1/";
+
+    /**
+     * 仓库默认公网OTA地址
+     */
+    String DEFAULT_SERVER_OTA_URL = "https://dkyyznecfvae.sealoshzh.site/xiaozhi/ota/";
+
+    /**
      * 无效固件URL
      */
-    String INVALID_FIRMWARE_URL = "http://xiaozhi.server.com:8002/xiaozhi/otaMag/download/NOT_ACTIVATED_FIRMWARE_THIS_IS_A_INVALID_URL";
+    String INVALID_FIRMWARE_URL = "https://dkyyznecfvae.sealoshzh.site/xiaozhi/otaMag/download/NOT_ACTIVATED_FIRMWARE_THIS_IS_A_INVALID_URL";
 
     /**
      * 字典类型

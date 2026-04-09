@@ -84,7 +84,7 @@
                 ? 'brightness(0) invert(1)'
                 : 'None',
           }" />
-          <span class="nav-text">设备运行时控制</span>
+          <span class="nav-text">OpenClaw 工作台</span>
         </div>
         <div v-if="featureStatus.knowledgeBase" class="equipment-management"
           :class="{ 'active-tab': $route.path === '/knowledge-base-management' || $route.path === '/knowledge-file-upload' }"

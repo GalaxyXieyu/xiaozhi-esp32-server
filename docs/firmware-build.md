@@ -1,5 +1,9 @@
 # esp32固件编译
 
+> 📌 本项目当前默认使用 `https://dkyyznecfvae.sealoshzh.site` 作为公网入口。
+>
+> 如果你在编译本项目固件，不要再使用 `https://api.tenclass.net/xiaozhi/ota/` 或历史测试域名 `2662r3426b.vicp.fun` 作为默认 OTA。
+
 ## 第1步 准备你的ota地址
 
 如果你，使用的是本项目0.3.12版本，不管是简单Server部署还是全模块部署，都会有ota地址。
@@ -53,8 +57,10 @@ ws://192.168.1.25:8000/xiaozhi/v1/
 
 ## 第4步 修改OTA地址
 
-找到`OTA_URL`的`default`的内容，把`https://api.tenclass.net/xiaozhi/ota/`
-   改成你自己的地址，例如，我的接口地址是`http://192.168.1.25:8002/xiaozhi/ota/`，就把内容改成这个。
+找到`OTA_URL`的`default`的内容，把默认值改成你要使用的地址。
+
+如果你编译的是本项目当前固件，请直接改成：
+`https://dkyyznecfvae.sealoshzh.site/xiaozhi/ota/`
 
 修改前：
 ```

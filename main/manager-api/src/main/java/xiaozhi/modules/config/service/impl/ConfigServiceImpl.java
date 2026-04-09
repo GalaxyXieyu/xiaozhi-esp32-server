@@ -36,6 +36,8 @@ import xiaozhi.modules.device.entity.DeviceEntity;
 import xiaozhi.modules.device.service.DeviceService;
 import xiaozhi.modules.model.entity.ModelConfigEntity;
 import xiaozhi.modules.model.service.ModelConfigService;
+import xiaozhi.modules.openclaw.dto.OpenClawAgentBindingDTO;
+import xiaozhi.modules.openclaw.service.OpenClawConfigService;
 import xiaozhi.modules.sys.dto.SysParamsDTO;
 import xiaozhi.modules.sys.service.SysParamsService;
 import xiaozhi.modules.timbre.service.TimbreService;
@@ -58,6 +60,7 @@ public class ConfigServiceImpl implements ConfigService {
     private final AgentContextProviderService agentContextProviderService;
     private final VoiceCloneService cloneVoiceService;
     private final AgentVoicePrintDao agentVoicePrintDao;
+    private final OpenClawConfigService openClawConfigService;
 
     @Override
     public Object getConfig(Boolean isCache) {
@@ -161,6 +164,7 @@ public class ConfigServiceImpl implements ConfigService {
         }
         // 构建返回数据
         Map<String, Object> result = new HashMap<>();
+        appendOpenClawBinding(agent, result);
         // 获取单台设备每天最多输出字数
         String deviceMaxOutputSize = sysParamsService.getValue("device_max_output_size", true);
         result.put("device_max_output_size", deviceMaxOutputSize);
@@ -520,5 +524,22 @@ public class ConfigServiceImpl implements ConfigService {
         }
         result.put("prompt", prompt);
         result.put("summaryMemory", summaryMemory);
+    }
+
+    private void appendOpenClawBinding(AgentEntity agent, Map<String, Object> result) {
+        if (agent == null) {
+            return;
+        }
+        OpenClawAgentBindingDTO binding = openClawConfigService.getAgentBinding(agent.getId());
+        if (binding == null) {
+            return;
+        }
+        if (!StringUtils.equals(binding.getAgentType(), "openclaw")) {
+            return;
+        }
+        if (StringUtils.isBlank(binding.getOpenclawAgentId())) {
+            return;
+        }
+        result.put("openclaw_binding", JsonUtils.parseObject(JsonUtils.toJsonString(binding), Map.class));
     }
 }

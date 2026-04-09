@@ -130,7 +130,7 @@ const routes = [
     },
     meta: {
       requiresAuth: true,
-      title: '设备运行时控制台'
+      title: 'OpenClaw 工作台'
     }
   },
   {

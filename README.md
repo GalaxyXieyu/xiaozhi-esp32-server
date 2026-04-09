@@ -189,15 +189,19 @@ Spearheaded by Professor Siyuan Liu's Team (South China University of Technology
 
 常见问题及相关教程，可参考[这个链接](./docs/FAQ.md)
 
-> 💡 提示：以下是按最新代码部署后的测试平台，有需要可烧录测试，并发为6个，每天会清空数据，
+> 📌 项目约定：本仓库当前默认且唯一使用的公网域名是 `https://dkyyznecfvae.sealoshzh.site`。
+>
+> `2662r3426b.vicp.fun` 仅作为历史测试站存在，不再作为本项目默认地址使用。
+
+> 💡 提示：以下是本项目当前使用的 Sealos 入口地址，
 
 ```
-智控台地址: https://2662r3426b.vicp.fun
-智控台(h5版): https://2662r3426b.vicp.fun/h5/index.html
+智控台地址: https://dkyyznecfvae.sealoshzh.site
+智控台(h5版): https://dkyyznecfvae.sealoshzh.site/h5/index.html
 
-服务测试工具： https://2662r3426b.vicp.fun/test/
-OTA接口地址: https://2662r3426b.vicp.fun/xiaozhi/ota/
-Websocket接口地址: wss://2662r3426b.vicp.fun/xiaozhi/v1/
+服务测试工具： https://dkyyznecfvae.sealoshzh.site/test/
+OTA接口地址: https://dkyyznecfvae.sealoshzh.site/xiaozhi/ota/
+Websocket接口地址: wss://dkyyznecfvae.sealoshzh.site/xiaozhi/v1/
 ```
 
 #### 🚩 配置说明和推荐

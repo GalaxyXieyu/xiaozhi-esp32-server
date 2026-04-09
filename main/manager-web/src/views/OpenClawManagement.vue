@@ -24,6 +24,18 @@
             @delete="removeChannel"
           />
 
+          <OpenClawChannelSetup
+            v-else-if="showChannelSetup"
+            :channel="selectedChannel"
+            :inventory="inventory"
+            :setup-guide="setupGuide"
+            :inventory-loading="inventoryLoading"
+            @back="clearSelection"
+            @edit="openEditChannel"
+            @copy-command="copyInstallCommand"
+            @refresh-inventory="refreshSelectedChannelData"
+          />
+
           <OpenClawChannelDetail
             v-else
             :channel="selectedChannel"
@@ -75,6 +87,7 @@ import VersionFooter from "@/components/VersionFooter.vue";
 import OpenClawChannelDetail from "@/components/openclaw/OpenClawChannelDetail.vue";
 import OpenClawChannelEditorDialog from "@/components/openclaw/OpenClawChannelEditorDialog.vue";
 import OpenClawChannelRegistry from "@/components/openclaw/OpenClawChannelRegistry.vue";
+import OpenClawChannelSetup from "@/components/openclaw/OpenClawChannelSetup.vue";
 
 const createEmptyChannel = () => ({
   id: "",
@@ -170,6 +183,7 @@ export default {
     OpenClawChannelDetail,
     OpenClawChannelEditorDialog,
     OpenClawChannelRegistry,
+    OpenClawChannelSetup,
     OpenClawDebugDialog,
     VersionFooter,
   },
@@ -199,6 +213,12 @@ export default {
   computed: {
     hasSelectedChannel() {
       return Boolean(this.selectedChannelId);
+    },
+    selectedChannelConnected() {
+      return this.isInventoryConnected(this.inventory);
+    },
+    showChannelSetup() {
+      return this.hasSelectedChannel && !this.selectedChannelConnected;
     },
     selectedChannel() {
       const matched = this.channels.find((item) => item.id === this.selectedChannelId);
@@ -377,6 +397,10 @@ export default {
         this.editorVisible = false;
       }
       this.selectedChannelId = channel.id;
+      this.selectedRuntimeAccount = "";
+      this.inventory = createEmptyInventory();
+      this.setupGuide = createEmptySetupGuide();
+      this.channelBindings = [];
       this.refreshSelectedChannelData();
     },
     clearSelection() {
@@ -390,7 +414,9 @@ export default {
     refreshSelectedChannelData() {
       this.refreshSetupGuide();
       this.syncSelectedInventory();
-      this.loadSelectedBindings();
+    },
+    isInventoryConnected(payload) {
+      return Boolean(payload && payload.healthy && (payload.connectedBridgeCount || 0) > 0);
     },
     refreshSetupGuide() {
       if (!this.selectedChannelId) {
@@ -415,16 +441,24 @@ export default {
     syncSelectedInventory() {
       if (!this.selectedChannelId) {
         this.inventory = createEmptyInventory();
+        this.channelBindings = [];
         return;
       }
       this.inventoryLoading = true;
       Api.openclaw.getChannelInventory(this.selectedChannelId, ({ data }) => {
         this.inventoryLoading = false;
         if (data.code === 0) {
-          this.inventory = normalizeInventoryPayload(data.data || {}, this.selectedChannelId);
+          const nextInventory = normalizeInventoryPayload(data.data || {}, this.selectedChannelId);
+          this.inventory = nextInventory;
           this.syncRuntimeSelection();
           this.updateSummaryFromSelectedChannel();
-          this.maybeOpenRoutedDebug();
+          if (this.isInventoryConnected(nextInventory)) {
+            this.loadSelectedBindings();
+            this.maybeOpenRoutedDebug();
+          } else {
+            this.channelBindings = [];
+            this.showDebugDialog = false;
+          }
           return;
         }
         this.inventory = {
@@ -432,6 +466,8 @@ export default {
           channelId: this.selectedChannelId,
           errorMessage: compactInventoryMessage(data.msg || "同步 OpenClaw inventory 失败"),
         };
+        this.channelBindings = [];
+        this.showDebugDialog = false;
         this.updateSummaryFromSelectedChannel();
       }, ({ data }) => {
         this.inventoryLoading = false;
@@ -440,6 +476,8 @@ export default {
           channelId: this.selectedChannelId,
           errorMessage: compactInventoryMessage((data && data.msg) || "同步 OpenClaw inventory 失败"),
         };
+        this.channelBindings = [];
+        this.showDebugDialog = false;
         this.updateSummaryFromSelectedChannel();
       });
     },

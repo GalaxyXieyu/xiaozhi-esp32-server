@@ -12,7 +12,7 @@
       <div class="detail-meta">
         <span class="detail-chip">{{ agentCards.length }} Agent</span>
         <span class="detail-chip">{{ filteredBindings.length }} 绑定</span>
-        <span class="detail-chip">{{ connectionReady ? `${inventory.connectedBridgeCount || 0} 台已接入` : "待接入" }}</span>
+        <span class="detail-chip">{{ `${inventory.connectedBridgeCount || 0} 台已接入` }}</span>
         <el-tag size="mini" :type="inventoryTagType" effect="plain">
           {{ inventoryStatusText }}
         </el-tag>
@@ -28,53 +28,12 @@
       :title="inventory.errorMessage"
     />
 
-    <section class="setup-panel">
-      <div class="setup-head">
-        <div>
-          <div class="panel-eyebrow">Channel 接入</div>
-          <h3 class="setup-title">{{ connectionReady ? "接入已完成" : "先把本地 OpenClaw 接进来" }}</h3>
-        </div>
-        <div class="setup-actions">
-          <el-button type="primary" :disabled="!setupGuide.installCommand" @click="$emit('copy-command')">复制接入命令</el-button>
-          <el-button :loading="inventoryLoading" @click="$emit('refresh-inventory')">
-            {{ connectionReady ? "重新检测" : "检测连接" }}
-          </el-button>
-        </div>
-      </div>
-
-      <div class="setup-steps">
-        <div class="setup-step" :class="{ done: Boolean(channel.id) }">
-          <span class="setup-index">1</span>
-          <div>
-            <strong>创建 Channel</strong>
-            <p>基础信息已经保存，可以开始接入。</p>
-          </div>
-        </div>
-        <div class="setup-step" :class="{ done: Boolean(setupGuide.installCommand) }">
-          <span class="setup-index">2</span>
-          <div>
-            <strong>在本机执行接入命令</strong>
-            <p>命令会把本地 OpenClaw 插件绑定到这个 Channel。</p>
-          </div>
-        </div>
-        <div class="setup-step" :class="{ done: connectionReady }">
-          <span class="setup-index">3</span>
-          <div>
-            <strong>检测连接</strong>
-            <p>连接成功后，这个 Channel 才会开始加载自己的 Agent。</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="command-preview">{{ setupGuide.installCommand || "接入命令生成中，请稍后再试。" }}</div>
-    </section>
-
     <div class="workspace-grid">
       <div class="agents-panel" v-loading="inventoryLoading || bindingsLoading">
         <div class="panel-head">
           <div>
-            <div class="panel-eyebrow">{{ connectionReady ? "OpenClaw Agents" : "等待接入" }}</div>
-            <h3 class="panel-title">{{ connectionReady ? "可调试 Agent" : "连接成功后再加载 Agent" }}</h3>
+            <div class="panel-eyebrow">OpenClaw Agents</div>
+            <h3 class="panel-title">可调试 Agent</h3>
           </div>
           <el-select
             v-if="showRuntimeSelector"
@@ -93,14 +52,7 @@
           </el-select>
         </div>
 
-        <div v-if="!connectionReady" class="agent-empty">
-          <div class="agent-empty-box blocked">
-            <el-empty description="当前还没检测到这个 Channel 的 OpenClaw 连接" :image-size="72" />
-            <p class="agent-empty-copy">先在本机执行接入命令，再点“检测连接”。连接成功后这里只会显示当前 Channel 自己的 Agent。</p>
-          </div>
-        </div>
-
-        <div v-else-if="agentCards.length" class="agent-grid">
+        <div v-if="agentCards.length" class="agent-grid">
           <article
             v-for="agent in agentCards"
             :key="agent.value"
@@ -171,7 +123,7 @@
           <el-button @click="commandDialogVisible = true">接入命令</el-button>
           <el-button plain @click="diagnosticsDialogVisible = true">排障信息</el-button>
           <el-button type="primary" :loading="inventoryLoading" @click="$emit('refresh-inventory')">
-            {{ connectionReady ? "重新检测" : "检测连接" }}
+            同步 Inventory
           </el-button>
         </div>
       </div>
@@ -275,7 +227,7 @@ export default {
       return Array.isArray(this.inventory.runtimeAccounts) ? this.inventory.runtimeAccounts : [];
     },
     showRuntimeSelector() {
-      return this.connectionReady && this.runtimeOptions.length > 1;
+      return this.runtimeOptions.length > 1;
     },
     connectionReady() {
       return Boolean(this.inventory && this.inventory.healthy && (this.inventory.connectedBridgeCount || 0) > 0);
@@ -292,9 +244,6 @@ export default {
       return list.filter((item) => !item.runtimeAccount || item.runtimeAccount === this.selectedRuntimeAccount);
     },
     currentInventoryAgents() {
-      if (!this.connectionReady) {
-        return [];
-      }
       const accountKey = this.selectedRuntimeAccount;
       const accountAgents = this.inventory.accountAgents && this.inventory.accountAgents[accountKey];
       if (Array.isArray(accountAgents) && accountAgents.length) {
@@ -338,9 +287,6 @@ export default {
     },
     visibleBridges() {
       const bridges = Array.isArray(this.inventory.bridges) ? this.inventory.bridges : [];
-      if (!this.connectionReady) {
-        return [];
-      }
       if (!this.selectedRuntimeAccount) {
         return bridges;
       }
@@ -350,7 +296,7 @@ export default {
       if (this.inventoryLoading) {
         return "检测中";
       }
-      if (this.connectionReady) {
+      if (this.inventory && this.inventory.healthy) {
         return "已连接";
       }
       if (this.inventory && this.inventory.errorMessage) {
@@ -494,88 +440,6 @@ export default {
   border-radius: 20px;
 }
 
-.setup-panel {
-  padding: 22px 24px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #e4ebf7;
-  box-shadow: 0 18px 40px rgba(124, 140, 177, 0.08);
-}
-
-.setup-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.setup-title {
-  margin: 8px 0 0;
-  font-size: 24px;
-  color: #1a2640;
-}
-
-.setup-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.setup-steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.setup-step {
-  display: flex;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, #fbfcff, #f5f8ff);
-  border: 1px solid #e5ebf8;
-}
-
-.setup-step.done {
-  background: linear-gradient(180deg, #f3fbf4, #eef8f1);
-  border-color: #cfe5d2;
-}
-
-.setup-step strong {
-  display: block;
-  color: #21304d;
-}
-
-.setup-step p {
-  margin: 6px 0 0;
-  color: #6b7a95;
-  line-height: 1.6;
-}
-
-.setup-index {
-  width: 28px;
-  height: 28px;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #dde7fb;
-  color: #36518f;
-  font-weight: 700;
-}
-
-.command-preview {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: #18233d;
-  color: #f7f9ff;
-  line-height: 1.7;
-  word-break: break-all;
-}
-
 .workspace-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -679,11 +543,6 @@ export default {
   border-radius: 24px;
   background: linear-gradient(180deg, #fbfcff, #f7f9fd);
   border: 1px dashed #dbe4f4;
-}
-
-.agent-empty-box.blocked {
-  background: linear-gradient(180deg, #fffaf2, #fffdf9);
-  border-color: #eddab4;
 }
 
 .panel-footer {
@@ -807,7 +666,6 @@ export default {
 }
 
 @media (max-width: 1180px) {
-  .setup-head,
   .detail-toolbar,
   .detail-main {
     flex-direction: column;
@@ -821,10 +679,6 @@ export default {
 
 @media (max-width: 720px) {
   .agents-panel {
-    padding: 18px;
-  }
-
-  .setup-panel {
     padding: 18px;
   }
 

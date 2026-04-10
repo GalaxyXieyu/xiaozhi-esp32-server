@@ -838,9 +838,91 @@ export default {
       if (!replyText) {
         return;
       }
+      const snapshotEvent = {
+        type: "reply_ready",
+        agentId: snapshot.agentId,
+        agentName: snapshot.agentName,
+        status: snapshot.status,
+      };
       this.upsertAssistantMessage(replyText, {
-        meta: [snapshot.agentName || snapshot.agentId, snapshot.status].filter(Boolean).join(" / "),
+        meta: this.buildTraceMessageMeta(snapshotEvent, {
+          statusLabel: this.resolveTraceMessageStage(snapshotEvent),
+        }),
         turnId: extra.turnId || this.activeDebugTurnId || this.getLatestTurnId(),
+      });
+    },
+    resolveTraceMessageText(event = {}) {
+      if (event.type === "reply_ready") {
+        return typeof event.message === "string" ? event.message.trim() : "";
+      }
+      if (event.type === "progress") {
+        return typeof event.message === "string" ? event.message.trim() : "";
+      }
+      if (event.type === "subagent_completed") {
+        return typeof event.message === "string" ? event.message.trim() : "";
+      }
+      if (event.type === "failed") {
+        return typeof event.message === "string" ? event.message.trim() : "";
+      }
+      return "";
+    },
+    resolveTraceMessageStage(event = {}) {
+      if (event.type === "reply_ready") {
+        return "最终回复";
+      }
+      if (event.type === "progress") {
+        return "处理中";
+      }
+      if (event.type === "subagent_completed") {
+        return "任务完成";
+      }
+      if (event.type === "failed") {
+        return "执行失败";
+      }
+      return typeof event.status === "string" ? event.status.trim() : "";
+    },
+    isPrimaryAgentEvent(event = {}) {
+      if (event.type === "subagent_spawned" || event.type === "subagent_completed") {
+        return false;
+      }
+      const selectedAgentId = String(this.debugForm.agentId || "").trim();
+      const selectedAgentName = String(this.debugForm.agentName || "").trim();
+      const eventAgentId = String(event.agentId || event.payload?.agentId || "").trim();
+      const eventAgentName = String(event.agentName || event.payload?.agentName || "").trim();
+      if (selectedAgentId && eventAgentId) {
+        return selectedAgentId === eventAgentId;
+      }
+      if (selectedAgentName && eventAgentName) {
+        return selectedAgentName === eventAgentName;
+      }
+      return true;
+    },
+    buildTraceMessageMeta(event = {}, extra = {}) {
+      const sourceLabel = this.isPrimaryAgentEvent(event) ? "主 Agent" : "子 Agent";
+      const agentLabel = String(
+        event.agentName || event.agentId || event.payload?.agentName || event.payload?.agentId || ""
+      ).trim();
+      const stageLabel = extra.statusLabel || this.resolveTraceMessageStage(event);
+      return [sourceLabel, agentLabel || "未命名 Agent", stageLabel].filter(Boolean).join(" · ");
+    },
+    shouldAppendTraceMessage(event = {}) {
+      if (!event || !event.type) {
+        return false;
+      }
+      if (!["progress", "subagent_completed", "failed"].includes(event.type)) {
+        return false;
+      }
+      return Boolean(this.resolveTraceMessageText(event));
+    },
+    appendTraceMessage(event = {}, extra = {}) {
+      const messageText = this.resolveTraceMessageText(event);
+      if (!messageText) {
+        return;
+      }
+      this.appendDebugMessage("assistant", messageText, {
+        id: extra.id || `trace-message-${event.seq || Date.now()}-${event.type}`,
+        meta: this.buildTraceMessageMeta(event, extra),
+        turnId: extra.turnId || `trace-${event.seq || Date.now()}-${event.type}`,
       });
     },
     formatTraceStatus(event) {
@@ -927,13 +1009,21 @@ export default {
       const eventId = `trace-${event.seq || Date.now()}-${event.type}`;
       if (event.type === "reply_ready") {
         this.upsertAssistantMessage(event.message || "OpenClaw 已生成最终回复", {
-          meta: [event.agentName || event.agentId, event.status].filter(Boolean).join(" / "),
+          meta: this.buildTraceMessageMeta(event, {
+            statusLabel: this.resolveTraceMessageStage(event),
+          }),
           turnId: this.activeDebugTurnId || this.getLatestTurnId(),
         });
         return;
       }
       if (event.type === "browser_audio_ready") {
         this.latestBrowserAudioText = (event.payload && event.payload.text) || this.latestBrowserAudioText;
+      }
+      if (this.shouldAppendTraceMessage(event)) {
+        this.appendTraceMessage(event, {
+          id: `${eventId}-message`,
+          statusLabel: this.resolveTraceMessageStage(event),
+        });
       }
       if (!STATUS_EVENT_TYPES.has(event.type)) {
         return;

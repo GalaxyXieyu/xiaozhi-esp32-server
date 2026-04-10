@@ -206,8 +206,8 @@ export default {
       ) || null;
     },
     deliveryAccountOptions() {
-      const accounts = Array.isArray(this.selectedDeliveryChannelMeta?.accounts)
-        ? this.selectedDeliveryChannelMeta.accounts
+      const accounts = Array.isArray(this.selectedDeliveryChannelMeta?.accountOptions)
+        ? this.selectedDeliveryChannelMeta.accountOptions
         : [];
       return this.appendCurrentBindingOption(
         accounts,
@@ -216,8 +216,8 @@ export default {
       );
     },
     deliveryTargetOptions() {
-      const targets = Array.isArray(this.selectedDeliveryChannelMeta?.targets)
-        ? this.selectedDeliveryChannelMeta.targets
+      const targets = Array.isArray(this.selectedDeliveryChannelMeta?.targetOptions)
+        ? this.selectedDeliveryChannelMeta.targetOptions
         : [];
       return this.appendCurrentBindingOption(
         targets,

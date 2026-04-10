@@ -86,6 +86,11 @@
             </el-button>
           </div>
 
+          <div v-if="activeStatusEvent" class="conversation-status-bar">
+            <span class="conversation-status-dot" :class="statusToneClass(activeStatusEvent.tone)"></span>
+            <span class="conversation-status-text">{{ activeStatusEvent.text }}</span>
+          </div>
+
           <div ref="transcript" class="transcript-shell">
             <div v-if="visibleMessages.length" class="message-list">
               <article
@@ -125,6 +130,7 @@
                 class="control-select"
                 size="small"
                 filterable
+                :popper-append-to-body="false"
                 :disabled="!debugReady"
                 placeholder="选择 runtime/account"
               >
@@ -144,6 +150,7 @@
                 class="control-select"
                 size="small"
                 filterable
+                :popper-append-to-body="false"
                 :disabled="!debugReady || !currentDebugAgentOptions.length"
                 placeholder="选择 OpenClaw Agent"
               >
@@ -170,33 +177,9 @@
           <div v-if="!debugReady" class="composer-note danger">
             {{ debugDisabledReason }}
           </div>
-          <div v-else-if="connectionsLoading" class="composer-note muted">
-            在线服务已连接，正在同步在线设备…
-          </div>
-          <div v-else-if="connectionLabel" class="composer-note">
-            已连接在线设备：{{ connectionLabel }}，调试结果可直接回推设备。
-          </div>
-          <div v-else class="composer-note muted">
-            在线服务已连接，但当前没有在线设备。本次调试只返回到页面，不会推送到设备。
-          </div>
-
-          <div v-if="debugReady" class="composer-note subtle">
-            当前状态：{{ serviceStatusSummary }}，{{ sessionStatusSummary }}
-          </div>
 
           <div v-if="selectedAgentNeedsInventorySync" class="composer-note warning">
             当前 Agent 未出现在 inventory 中，建议先同步 OpenClaw inventory。
-          </div>
-
-          <div v-if="visibleStatusEvents.length" class="composer-timeline">
-            <div
-              v-for="item in visibleStatusEvents.slice(-3)"
-              :key="item.id || `${item.eventType}-${item.text}`"
-              class="composer-timeline-item"
-            >
-              <span class="composer-timeline-dot" :class="statusToneClass(item.tone)"></span>
-              <span class="composer-timeline-text">{{ item.text }}</span>
-            </div>
           </div>
 
           <el-input
@@ -422,7 +405,13 @@ export default {
         }
       }
 
-      return normalized.slice(-3);
+      return normalized;
+    },
+    activeStatusEvent() {
+      if (!this.visibleStatusEvents.length) {
+        return null;
+      }
+      return this.visibleStatusEvents[this.visibleStatusEvents.length - 1];
     },
     visibleMessages() {
       const source = Array.isArray(this.debugMessages)
@@ -456,18 +445,6 @@ export default {
         }
       }
       return "";
-    },
-    serviceStatusSummary() {
-      return `在线服务 ${this.connectedBridgeCount} 个`;
-    },
-    sessionStatusSummary() {
-      if (this.connectionsLoading) {
-        return "在线设备同步中";
-      }
-      if (!this.connectionCount) {
-        return "在线设备 0 台";
-      }
-      return `在线设备 ${this.connectionCount} 台`;
     },
   },
   watch: {

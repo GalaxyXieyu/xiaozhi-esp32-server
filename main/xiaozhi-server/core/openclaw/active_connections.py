@@ -121,6 +121,50 @@ class XiaozhiActiveConnectionRegistry:
             "deviceId": getattr(conn, "device_id", None),
         }
 
+    async def set_openclaw_async_waiting(
+        self,
+        enabled: bool,
+        *,
+        session_id: str | None = None,
+        device_id: str | None = None,
+        peer_id: str | None = None,
+        allow_latest: bool = False,
+        source: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        conn = await self._resolve_connection(
+            session_id=session_id,
+            device_id=device_id,
+            peer_id=peer_id,
+            allow_latest=allow_latest,
+        )
+        if conn is None:
+            return {
+                "enabled": bool(enabled),
+                "updatedCount": 0,
+                "sessionId": session_id,
+                "deviceId": device_id,
+            }
+
+        conn.set_openclaw_async_waiting(
+            bool(enabled),
+            source=source,
+            reason=reason,
+        )
+        resolved_session_id = getattr(conn, "session_id", None)
+        resolved_device_id = getattr(conn, "device_id", None)
+        self.logger.bind(tag=TAG).info(
+            "定向更新 OpenClaw 异步等待态: "
+            f"enabled={bool(enabled)}, session={resolved_session_id or ''}, "
+            f"device={resolved_device_id or ''}, source={str(source or '').strip() or '-'}"
+        )
+        return {
+            "enabled": bool(enabled),
+            "updatedCount": 1,
+            "sessionId": resolved_session_id,
+            "deviceId": resolved_device_id,
+        }
+
     async def list_connections(self) -> list[dict[str, Any]]:
         async with self._lock:
             items: list[dict[str, Any]] = []

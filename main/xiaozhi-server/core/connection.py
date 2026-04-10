@@ -194,6 +194,10 @@ class ConnectionHandler:
 
         # 是否在聊天结束后关闭连接
         self.close_after_chat = False
+        self.openclaw_async_waiting = False
+        self.openclaw_async_waiting_source = ""
+        self.openclaw_async_waiting_reason = ""
+        self.openclaw_async_waiting_started_at = 0.0
         self.load_function_plugin = False
         self.intent_type = "nointent"
 
@@ -204,6 +208,7 @@ class ConnectionHandler:
 
         # {"mcp":true} 表示启用MCP功能
         self.features = None
+        self.standby_online = False
 
         # 标记连接是否来自MQTT
         self.conn_from_mqtt_gateway = False
@@ -334,10 +339,24 @@ class ConnectionHandler:
 
             asyncio.create_task(check_bind_device(self))
 
+    def _is_pre_bind_allowed_message(self, message) -> bool:
+        if not isinstance(message, str):
+            return False
+
+        try:
+            msg_json = json.loads(message)
+        except json.JSONDecodeError:
+            return False
+
+        if not isinstance(msg_json, dict):
+            return False
+
+        return msg_json.get("type") == "hello"
+
     async def _route_message(self, message):
         """消息路由"""
         # 检查是否已经获取到真实的绑定状态
-        if not self.bind_completed_event.is_set():
+        if not self.bind_completed_event.is_set() and not self._is_pre_bind_allowed_message(message):
             # 还没有获取到真实状态，等待直到获取到真实状态或超时
             try:
                 await asyncio.wait_for(self.bind_completed_event.wait(), timeout=1)
@@ -994,6 +1013,13 @@ class ConnectionHandler:
             f"device={self.device_id}, session={self.session_id}, textLength={len(message)}"
         )
 
+        if self.openclaw_async_waiting:
+            self.set_openclaw_async_waiting(
+                False,
+                source="push-text",
+                reason="async-reply-ready",
+            )
+
         # 主动推送默认抢占当前播报，确保设备进入可播放状态。
         self.client_abort = True
         self.clear_queues()
@@ -1021,6 +1047,104 @@ class ConnectionHandler:
             )
         )
         self.dialogue.put(Message(role="assistant", content=message))
+
+    def set_openclaw_async_waiting(
+        self,
+        enabled: bool,
+        *,
+        source: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        normalized_enabled = bool(enabled)
+        normalized_source = str(source or "").strip()
+        normalized_reason = str(reason or "").strip()
+        now_ms = time.time() * 1000
+
+        if normalized_enabled:
+            self.openclaw_async_waiting = True
+            self.openclaw_async_waiting_source = normalized_source
+            self.openclaw_async_waiting_reason = normalized_reason
+            self.openclaw_async_waiting_started_at = now_ms
+            self.last_activity_time = now_ms
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw 异步等待已开启: "
+                f"device={self.device_id}, session={self.session_id}, "
+                f"source={normalized_source or '-'}, reason={normalized_reason or '-'}"
+            )
+            self._schedule_openclaw_async_waiting_signal(normalized_reason)
+            return
+
+        was_waiting = self.openclaw_async_waiting
+        self.openclaw_async_waiting = False
+        self.openclaw_async_waiting_source = ""
+        self.openclaw_async_waiting_reason = ""
+        self.openclaw_async_waiting_started_at = 0.0
+        if was_waiting:
+            self.last_activity_time = now_ms
+            self.logger.bind(tag=TAG).info(
+                "OpenClaw 异步等待已关闭: "
+                f"device={self.device_id}, session={self.session_id}, "
+                f"source={normalized_source or '-'}, reason={normalized_reason or '-'}"
+            )
+
+    def _schedule_openclaw_async_waiting_signal(self, reason: str = "") -> None:
+        loop = getattr(self, "loop", None)
+        if loop is None or loop.is_closed():
+            return
+
+        async def _send_signal():
+            websocket = self.websocket
+            if websocket is None or getattr(websocket, "closed", False):
+                return
+
+            payload = {
+                "type": "system",
+                "command": "await_async_result",
+                "session_id": self.session_id,
+            }
+            if reason:
+                payload["message"] = reason
+
+            try:
+                await websocket.send(json.dumps(payload, ensure_ascii=False))
+            except Exception as exc:
+                self.logger.bind(tag=TAG).warning(
+                    "OpenClaw 异步等待信号下发失败: "
+                    f"device={self.device_id}, session={self.session_id}, error={exc}"
+                )
+
+        future = asyncio.run_coroutine_threadsafe(_send_signal(), loop)
+        future.add_done_callback(lambda fut: fut.exception() if not fut.cancelled() else None)
+
+    def is_openclaw_async_waiting_active(self) -> bool:
+        if not self.openclaw_async_waiting:
+            return False
+
+        timeout_seconds = int(
+            self.config.get("openclaw_async_waiting_timeout_seconds", 1800)
+        )
+        if timeout_seconds <= 0:
+            return True
+
+        started_at = float(self.openclaw_async_waiting_started_at or 0.0)
+        if started_at <= 0.0:
+            return True
+
+        elapsed_ms = time.time() * 1000 - started_at
+        if elapsed_ms <= timeout_seconds * 1000:
+            return True
+
+        self.logger.bind(tag=TAG).warning(
+            "OpenClaw 异步等待超时，恢复常规空闲超时: "
+            f"device={self.device_id}, session={self.session_id}, "
+            f"waitedSeconds={int(elapsed_ms / 1000)}"
+        )
+        self.set_openclaw_async_waiting(
+            False,
+            source="server-timeout",
+            reason="async-wait-expired",
+        )
+        return False
 
     def _extract_openclaw_response_text(self, result) -> str:
         return extract_spoken_text(result)
@@ -1645,6 +1769,14 @@ class ConnectionHandler:
         """检查连接超时"""
         try:
             while not self.stop_event.is_set():
+                if self.standby_online and not self.need_bind:
+                    await asyncio.sleep(10)
+                    continue
+
+                if self.is_openclaw_async_waiting_active():
+                    await asyncio.sleep(10)
+                    continue
+
                 last_activity_time = self.last_activity_time
                 if self.need_bind:
                     last_activity_time = self.first_activity_time

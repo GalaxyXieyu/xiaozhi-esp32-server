@@ -390,8 +390,14 @@ class OpenClawBridgeHub:
         params: dict[str, Any],
     ):
         push_text_method = self.hub_config.get("push_text_method", "xiaozhi.pushText")
+        set_async_waiting_method = self.hub_config.get(
+            "set_async_waiting_method",
+            "xiaozhi.setAsyncWaiting",
+        )
         if method == push_text_method:
             return await self._push_text_to_xiaozhi(connection, params)
+        if method == set_async_waiting_method:
+            return await self._set_async_waiting(connection, params)
         raise RuntimeError(f"Unsupported method: {method}")
 
     async def _push_text_to_xiaozhi(
@@ -417,4 +423,34 @@ class OpenClawBridgeHub:
             session_id=session_id,
             device_id=device_id,
             peer_id=peer_id,
+        )
+
+    async def _set_async_waiting(
+        self,
+        connection: OpenClawHubConnection,
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        if self.connection_registry is None:
+            raise RuntimeError("xiaozhi 在线连接注册表未初始化")
+
+        enabled = bool(params.get("enabled"))
+        session_id = params.get("sessionId")
+        device_id = params.get("deviceId")
+        peer_id = params.get("peerId")
+        source = params.get("source")
+        reason = params.get("reason")
+
+        self.logger.bind(tag=TAG).info(
+            "OpenClaw bridge 更新异步等待态: "
+            f"bridge={connection.bridge_id}, enabled={enabled}, "
+            f"session={session_id or ''}, device={device_id or ''}, "
+            f"peer={peer_id or ''}, source={str(source or '').strip() or '-'}"
+        )
+        return await self.connection_registry.set_openclaw_async_waiting(
+            enabled=enabled,
+            session_id=session_id,
+            device_id=device_id,
+            peer_id=peer_id,
+            source=source,
+            reason=reason,
         )

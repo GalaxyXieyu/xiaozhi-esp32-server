@@ -115,6 +115,10 @@ async def no_voice_close_connect(conn: "ConnectionHandler", have_voice):
     if have_voice:
         conn.last_activity_time = time.time() * 1000
         return
+    if getattr(conn, "standby_online", False) and not conn.need_bind:
+        return
+    if conn.is_openclaw_async_waiting_active():
+        return
     # 只有在已经初始化过时间戳的情况下才进行超时检查
     if conn.last_activity_time > 0.0:
         no_voice_time = time.time() * 1000 - conn.last_activity_time

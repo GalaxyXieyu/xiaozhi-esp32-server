@@ -51,11 +51,19 @@ async def handleHelloMessage(conn: "ConnectionHandler", msg_json):
     if features:
         conn.logger.bind(tag=TAG).debug(f"客户端特性: {features}")
         conn.features = features
+        conn.standby_online = bool(features.get("standby_online"))
+        if conn.standby_online:
+            conn.logger.bind(tag=TAG).info("客户端已启用静默常驻在线")
         if features.get("mcp"):
             conn.logger.bind(tag=TAG).debug("客户端支持MCP")
             conn.mcp_client = MCPClient()
             # 发送初始化
             asyncio.create_task(send_mcp_initialize_message(conn))
+    else:
+        conn.features = {}
+        conn.standby_online = False
+
+    conn.last_activity_time = time.time() * 1000
 
     await conn.websocket.send(json.dumps(conn.welcome_msg))
 

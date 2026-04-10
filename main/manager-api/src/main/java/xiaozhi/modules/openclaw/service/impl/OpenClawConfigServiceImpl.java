@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
@@ -31,11 +32,13 @@ import xiaozhi.modules.openclaw.dto.OpenClawChannelBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.BridgeItem;
+import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.DeliveryChannelItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelInventoryDTO.OptionItem;
 import xiaozhi.modules.openclaw.dto.OpenClawChannelSetupGuideDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawClearSessionResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawConnectionDTO;
+import xiaozhi.modules.openclaw.dto.OpenClawDeliveryBindingDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatRequestDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugChatResponseDTO;
 import xiaozhi.modules.openclaw.dto.OpenClawDebugSessionTraceResponseDTO;
@@ -49,6 +52,8 @@ import xiaozhi.modules.sys.service.SysParamsService;
 @Service
 @AllArgsConstructor
 public class OpenClawConfigServiceImpl implements OpenClawConfigService {
+    private static final Set<String> SUPPORTED_DELIVERY_FORMATS = Set.of("text", "card");
+
     private final SysParamsService sysParamsService;
     private final SysParamsDao sysParamsDao;
     private final RestTemplate restTemplate;
@@ -204,6 +209,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                     new String[]{"agents", "peerAgents", "agentInventory", "agentList", "peerAgentList"},
                     new String[]{"id", "agentId", "peerAgentId", "value", "key"},
                     new String[]{"label", "name", "agentName", "displayName", "title", "id"}));
+            inventory.setDeliveryChannels(extractDeliveryChannels(root));
             inventory.setBridges(extractBridges(root));
             inventory.setAccountAgents(extractAccountAgents(root));
             inventory.setBridgeAgents(extractBridgeAgents(root));
@@ -424,6 +430,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     public OpenClawAgentBindingDTO saveAgentBinding(String agentId, OpenClawAgentBindingDTO binding) {
         Map<String, OpenClawAgentBindingDTO> bindings = loadBindings();
         OpenClawAgentBindingDTO normalized = normalizeBinding(binding);
+        validateDeliveryBinding(normalized);
         bindings.put(agentId, normalized);
         persistParam(
                 Constant.SERVER_OPENCLAW_AGENT_BINDINGS,
@@ -573,6 +580,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             normalized.setRuntimeAccountLabel("");
             normalized.setOpenclawAgentId("");
             normalized.setOpenclawAgentName("");
+            normalized.setDeliveryBinding(normalizeDeliveryBinding(null));
             normalized.setSyncStatus("native");
             normalized.setErrorMessage("");
             return normalized;
@@ -582,9 +590,47 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         normalized.setRuntimeAccountLabel(StringUtils.trimToEmpty(normalized.getRuntimeAccountLabel()));
         normalized.setOpenclawAgentId(StringUtils.trimToEmpty(normalized.getOpenclawAgentId()));
         normalized.setOpenclawAgentName(StringUtils.trimToEmpty(normalized.getOpenclawAgentName()));
+        normalized.setDeliveryBinding(normalizeDeliveryBinding(normalized.getDeliveryBinding()));
         normalized.setSyncStatus(StringUtils.defaultIfBlank(StringUtils.trimToEmpty(normalized.getSyncStatus()), "configured"));
         normalized.setErrorMessage(StringUtils.trimToEmpty(normalized.getErrorMessage()));
         return normalized;
+    }
+
+    private OpenClawDeliveryBindingDTO normalizeDeliveryBinding(OpenClawDeliveryBindingDTO binding) {
+        OpenClawDeliveryBindingDTO normalized = binding == null ? new OpenClawDeliveryBindingDTO() : binding;
+        normalized.setEnabled(Boolean.TRUE.equals(normalized.getEnabled()));
+        normalized.setDeliveryChannel(StringUtils.trimToEmpty(normalized.getDeliveryChannel()));
+        normalized.setAccountId(StringUtils.trimToEmpty(normalized.getAccountId()));
+        normalized.setAccountLabel(StringUtils.trimToEmpty(normalized.getAccountLabel()));
+        normalized.setTarget(StringUtils.trimToEmpty(normalized.getTarget()));
+        normalized.setTargetLabel(StringUtils.trimToEmpty(normalized.getTargetLabel()));
+        normalized.setThreadId(StringUtils.trimToEmpty(normalized.getThreadId()));
+        String format = StringUtils.defaultIfBlank(StringUtils.trimToEmpty(normalized.getFormat()), "text");
+        normalized.setFormat(SUPPORTED_DELIVERY_FORMATS.contains(format) ? format : "text");
+
+        if (!Boolean.TRUE.equals(normalized.getEnabled())) {
+            normalized.setEnabled(Boolean.FALSE);
+        }
+
+        return normalized;
+    }
+
+    private void validateDeliveryBinding(OpenClawAgentBindingDTO binding) {
+        if (binding == null || !"openclaw".equals(binding.getAgentType())) {
+            return;
+        }
+
+        OpenClawDeliveryBindingDTO deliveryBinding = binding.getDeliveryBinding();
+        if (deliveryBinding == null || !Boolean.TRUE.equals(deliveryBinding.getEnabled())) {
+            return;
+        }
+
+        if (StringUtils.isBlank(deliveryBinding.getDeliveryChannel())) {
+            throw new IllegalArgumentException("启用详细稿投递后，必须选择详细稿投递渠道");
+        }
+        if (StringUtils.isBlank(deliveryBinding.getTarget())) {
+            throw new IllegalArgumentException("启用详细稿投递后，必须选择或填写 IM 目标");
+        }
     }
 
     private OpenClawChannelDTO resolveEnabledChannel(String channelId) {
@@ -980,6 +1026,36 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return bridges;
     }
 
+    private List<DeliveryChannelItem> extractDeliveryChannels(Map<String, Object> root) {
+        Object raw = findFirst(root, new String[]{"deliveryChannels", "deliveryCatalog"});
+        if (raw == null) {
+            return new ArrayList<>();
+        }
+
+        List<?> list;
+        if (raw instanceof List<?> rawList) {
+            list = rawList;
+        } else if (raw instanceof Map<?, ?> rawMap) {
+            Object items = findFirst(castMap(rawMap), new String[]{"items", "channels", "list", "data"});
+            if (items instanceof List<?> itemsList) {
+                list = itemsList;
+            } else {
+                return new ArrayList<>();
+            }
+        } else {
+            return new ArrayList<>();
+        }
+
+        List<DeliveryChannelItem> deliveryChannels = new ArrayList<>();
+        for (Object item : list) {
+            DeliveryChannelItem deliveryChannel = toDeliveryChannelItem(item);
+            if (deliveryChannel != null) {
+                deliveryChannels.add(deliveryChannel);
+            }
+        }
+        return deliveryChannels;
+    }
+
     private Map<String, List<OptionItem>> extractAccountAgents(Map<String, Object> root) {
         Object raw = findFirst(root, new String[]{"accountAgents", "agentsByAccount"});
         if (!(raw instanceof Map<?, ?> map)) {
@@ -1026,6 +1102,36 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             ));
         }
         return bridgeAgents;
+    }
+
+    private DeliveryChannelItem toDeliveryChannelItem(Object item) {
+        if (!(item instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Map<String, Object> raw = castMap(map);
+        String value = firstString(raw, new String[]{"value", "channel", "id", "key"});
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+
+        DeliveryChannelItem deliveryChannel = new DeliveryChannelItem();
+        deliveryChannel.setValue(value);
+        deliveryChannel.setLabel(StringUtils.defaultIfBlank(
+                firstString(raw, new String[]{"label", "name", "title"}),
+                value
+        ));
+        deliveryChannel.setDescription(firstString(raw, new String[]{"description"}));
+        deliveryChannel.setTargetHint(firstString(raw, new String[]{"targetHint"}));
+        deliveryChannel.setTargetPlaceholder(firstString(raw, new String[]{"targetPlaceholder"}));
+        deliveryChannel.setAccountOptions(extractOptions(raw,
+                new String[]{"accountOptions"},
+                new String[]{"value", "id", "key"},
+                new String[]{"label", "name", "title", "value"}));
+        deliveryChannel.setTargetOptions(extractOptions(raw,
+                new String[]{"targetOptions"},
+                new String[]{"value", "id", "key"},
+                new String[]{"label", "name", "title", "value"}));
+        return deliveryChannel;
     }
 
     private Object findFirst(Map<String, Object> root, String[] keys) {

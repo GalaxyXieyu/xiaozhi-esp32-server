@@ -197,7 +197,43 @@ class OpenClawHubSession:
         }
         if speaker:
             params["speaker"] = speaker
+        delivery_binding = self._build_delivery_binding_snapshot()
+        if delivery_binding:
+            params["deliveryBinding"] = delivery_binding
         return params
+
+    def _build_delivery_binding_snapshot(self) -> dict[str, Any] | None:
+        binding = self.conn.config.get("openclaw_binding") or {}
+        if not isinstance(binding, dict):
+            return None
+        delivery_binding = binding.get("deliveryBinding") or {}
+        if not isinstance(delivery_binding, dict):
+            return None
+
+        enabled = bool(delivery_binding.get("enabled"))
+        if not enabled:
+            return None
+
+        delivery_channel = str(delivery_binding.get("deliveryChannel") or "").strip()
+        account_id = str(delivery_binding.get("accountId") or "").strip()
+        target = str(delivery_binding.get("target") or "").strip()
+        thread_id = str(delivery_binding.get("threadId") or "").strip()
+        fmt = str(delivery_binding.get("format") or "text").strip() or "text"
+
+        if not delivery_channel or not target:
+            return None
+
+        snapshot: dict[str, Any] = {
+            "enabled": True,
+            "deliveryChannel": delivery_channel,
+            "target": target,
+            "format": fmt,
+        }
+        if account_id:
+            snapshot["accountId"] = account_id
+        if thread_id:
+            snapshot["threadId"] = thread_id
+        return snapshot
 
     def _resolve_peer_id(
         self,

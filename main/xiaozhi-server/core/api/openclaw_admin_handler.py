@@ -139,6 +139,112 @@ class OpenClawAdminHandler(BaseHandler):
             normalized.append(option)
         return normalized
 
+    def _normalize_delivery_nested_options(self, items) -> list[dict]:
+        if not isinstance(items, list):
+            return []
+
+        normalized: list[dict] = []
+        seen: set[str] = set()
+        for item in items:
+            option = None
+            if isinstance(item, dict):
+                option = self._normalize_option(
+                    str(item.get("value") or item.get("id") or item.get("key") or ""),
+                    str(item.get("label") or item.get("name") or item.get("title") or ""),
+                )
+            elif isinstance(item, str):
+                option = self._normalize_option(item, item)
+
+            if option is None or option["value"] in seen:
+                continue
+            seen.add(option["value"])
+            normalized.append(option)
+        return normalized
+
+    def _normalize_delivery_channel_options(self, delivery_channels) -> list[dict]:
+        if not isinstance(delivery_channels, list):
+            return []
+
+        normalized: list[dict] = []
+        seen: set[str] = set()
+        for item in delivery_channels:
+            if not isinstance(item, dict):
+                continue
+
+            channel_id = str(
+                item.get("value") or item.get("channel") or item.get("id") or ""
+            ).strip()
+            label = str(
+                item.get("label") or item.get("name") or item.get("title") or channel_id
+            ).strip()
+            if not channel_id or channel_id in seen:
+                continue
+
+            seen.add(channel_id)
+            normalized.append(
+                {
+                    "value": channel_id,
+                    "label": label or channel_id,
+                    "description": str(item.get("description") or "").strip(),
+                    "targetHint": str(item.get("targetHint") or "").strip(),
+                    "targetPlaceholder": str(
+                        item.get("targetPlaceholder") or ""
+                    ).strip(),
+                    "accountOptions": self._normalize_delivery_nested_options(
+                        item.get("accountOptions")
+                    ),
+                    "targetOptions": self._normalize_delivery_nested_options(
+                        item.get("targetOptions")
+                    ),
+                }
+            )
+        return normalized
+
+    def _merge_delivery_channel_options(self, base_items, next_items) -> list[dict]:
+        merged: dict[str, dict] = {}
+        for item in [*(base_items or []), *(next_items or [])]:
+            if not isinstance(item, dict):
+                continue
+            channel_id = str(item.get("value") or "").strip()
+            if not channel_id:
+                continue
+
+            existing = merged.get(channel_id)
+            if existing is None:
+                merged[channel_id] = {
+                    "value": channel_id,
+                    "label": str(item.get("label") or channel_id).strip() or channel_id,
+                    "description": str(item.get("description") or "").strip(),
+                    "targetHint": str(item.get("targetHint") or "").strip(),
+                    "targetPlaceholder": str(
+                        item.get("targetPlaceholder") or ""
+                    ).strip(),
+                    "accountOptions": self._normalize_delivery_nested_options(
+                        item.get("accountOptions")
+                    ),
+                    "targetOptions": self._normalize_delivery_nested_options(
+                        item.get("targetOptions")
+                    ),
+                }
+                continue
+
+            if not existing.get("label") and item.get("label"):
+                existing["label"] = str(item.get("label")).strip()
+            if not existing.get("description") and item.get("description"):
+                existing["description"] = str(item.get("description")).strip()
+            if not existing.get("targetHint") and item.get("targetHint"):
+                existing["targetHint"] = str(item.get("targetHint")).strip()
+            if not existing.get("targetPlaceholder") and item.get("targetPlaceholder"):
+                existing["targetPlaceholder"] = str(item.get("targetPlaceholder")).strip()
+            existing["accountOptions"] = self._normalize_delivery_nested_options(
+                [*existing.get("accountOptions", []), *(item.get("accountOptions") or [])]
+            )
+            existing["targetOptions"] = self._normalize_delivery_nested_options(
+                [*existing.get("targetOptions", []), *(item.get("targetOptions") or [])]
+            )
+
+        return list(merged.values())
+
     def _normalize_debug_key(self, value: str | None) -> str:
         raw = (value or "").strip()
         if not raw:
@@ -483,6 +589,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "bridges": [],
                     "accountAgents": {},
                     "bridgeAgents": {},
+                    "deliveryChannels": [],
                 },
                 status=400,
             )
@@ -504,6 +611,7 @@ class OpenClawAdminHandler(BaseHandler):
             account_agents: dict[str, list[dict]] = {}
             bridge_agents: dict[str, list[dict]] = {}
             merged_agents: list[dict] = []
+            merged_delivery_channels: list[dict] = []
             seen_runtime_values: set[str] = set()
             seen_agent_values: set[str] = set()
             errors: list[str] = []
@@ -552,6 +660,13 @@ class OpenClawAdminHandler(BaseHandler):
                         seen_agent_values.add(option["value"])
                         merged_agents.append(option)
 
+                    merged_delivery_channels = self._merge_delivery_channel_options(
+                        merged_delivery_channels,
+                        self._normalize_delivery_channel_options(
+                            result.get("deliveryChannels")
+                        ),
+                    )
+
                     success_count += 1
                 except Exception as e:
                     self.logger.bind(tag=TAG).error(
@@ -579,6 +694,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "bridges": bridges,
                     "accountAgents": account_agents,
                     "bridgeAgents": bridge_agents,
+                    "deliveryChannels": merged_delivery_channels,
                     "errorMessage": error_message,
                 }
             )
@@ -595,6 +711,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "bridges": [],
                     "accountAgents": {},
                     "bridgeAgents": {},
+                    "deliveryChannels": [],
                 },
                 status=400,
             )

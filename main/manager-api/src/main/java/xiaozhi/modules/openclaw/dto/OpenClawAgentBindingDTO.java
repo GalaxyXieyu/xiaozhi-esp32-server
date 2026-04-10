@@ -28,6 +28,9 @@ public class OpenClawAgentBindingDTO implements Serializable {
     @Schema(description = "OpenClaw 侧 agent 展示名")
     private String openclawAgentName;
 
+    @Schema(description = "详细稿投递绑定")
+    private OpenClawDeliveryBindingDTO deliveryBinding;
+
     @Schema(description = "最近同步状态")
     private String syncStatus;
 

@@ -234,7 +234,11 @@ public class OpenClawConfigController {
         if (!hasAgentPermission(agentId)) {
             return new Result<OpenClawAgentBindingDTO>().error("没有权限修改该智能体的 OpenClaw 配置");
         }
-        return new Result<OpenClawAgentBindingDTO>().ok(openClawConfigService.saveAgentBinding(agentId, binding));
+        try {
+            return new Result<OpenClawAgentBindingDTO>().ok(openClawConfigService.saveAgentBinding(agentId, binding));
+        } catch (Exception e) {
+            return new Result<OpenClawAgentBindingDTO>().error("保存 OpenClaw 绑定失败: " + e.getMessage());
+        }
     }
 
     private boolean hasAgentPermission(String agentId) {

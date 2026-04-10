@@ -32,6 +32,9 @@ public class OpenClawChannelInventoryDTO implements Serializable {
     @Schema(description = "可选 OpenClaw agent 列表")
     private List<OptionItem> agents = new ArrayList<>();
 
+    @Schema(description = "详细稿投递渠道目录")
+    private List<DeliveryChannelItem> deliveryChannels = new ArrayList<>();
+
     @Schema(description = "Bridge 连接状态")
     private List<BridgeItem> bridges = new ArrayList<>();
 
@@ -81,5 +84,32 @@ public class OpenClawChannelInventoryDTO implements Serializable {
 
         @Schema(description = "最近断开时间")
         private String lastDisconnectedAt;
+    }
+
+    @Data
+    @Schema(description = "详细稿投递渠道")
+    public static class DeliveryChannelItem implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        @Schema(description = "渠道标识，例如 wecom / feishu")
+        private String value;
+
+        @Schema(description = "渠道中文名")
+        private String label;
+
+        @Schema(description = "渠道说明")
+        private String description;
+
+        @Schema(description = "target 填写说明")
+        private String targetHint;
+
+        @Schema(description = "target 输入占位提示")
+        private String targetPlaceholder;
+
+        @Schema(description = "可选账号列表")
+        private List<OptionItem> accountOptions = new ArrayList<>();
+
+        @Schema(description = "可选目标列表")
+        private List<OptionItem> targetOptions = new ArrayList<>();
     }
 }

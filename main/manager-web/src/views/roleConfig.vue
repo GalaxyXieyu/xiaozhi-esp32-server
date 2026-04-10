@@ -197,6 +197,121 @@
                           <span v-if="openclawBinding.runtimeAccountLabel">账号: {{ openclawBinding.runtimeAccountLabel }}</span>
                           <span v-if="openclawBinding.openclawAgentName">Agent: {{ openclawBinding.openclawAgentName }}</span>
                         </div>
+                        <div class="openclaw-delivery-panel">
+                          <div class="openclaw-delivery-head">
+                            <div class="openclaw-binding-title">IM Detail Delivery</div>
+                            <el-switch
+                              v-model="openclawBinding.deliveryBinding.enabled"
+                              active-text="启用"
+                              inactive-text="关闭"
+                            />
+                          </div>
+                          <div class="openclaw-delivery-hint">
+                            设备端继续播报简报；需要把详细稿发到 IM 时，在这里配置 OpenClaw outbound channel / account / target。
+                          </div>
+                          <div class="openclaw-binding-grid">
+                            <el-select
+                              v-model="openclawBinding.deliveryBinding.deliveryChannel"
+                              class="form-select"
+                              filterable
+                              allow-create
+                              default-first-option
+                              clearable
+                              :disabled="!openclawBinding.deliveryBinding.enabled"
+                              placeholder="选择详细稿投递渠道"
+                              @change="handleDeliveryChannelChange"
+                            >
+                              <el-option
+                                v-for="item in deliveryChannelOptions"
+                                :key="item.value"
+                                :label="formatDeliveryChannelLabel(item)"
+                                :value="item.value"
+                              />
+                            </el-select>
+                            <el-select
+                              v-model="openclawBinding.deliveryBinding.accountId"
+                              class="form-select"
+                              filterable
+                              allow-create
+                              default-first-option
+                              clearable
+                              :disabled="!openclawBinding.deliveryBinding.enabled || !openclawBinding.deliveryBinding.deliveryChannel"
+                              :placeholder="deliveryAccountOptions.length ? '选择投递账号（也可手输）' : '可选：outbound accountId'"
+                              @change="handleDeliveryAccountChange"
+                            >
+                              <el-option
+                                v-for="item in deliveryAccountOptions"
+                                :key="item.value"
+                                :label="item.label"
+                                :value="item.value"
+                              />
+                            </el-select>
+                            <el-select
+                              v-model="openclawBinding.deliveryBinding.target"
+                              class="form-select"
+                              filterable
+                              allow-create
+                              default-first-option
+                              clearable
+                              :disabled="!openclawBinding.deliveryBinding.enabled || !openclawBinding.deliveryBinding.deliveryChannel"
+                              :placeholder="selectedDeliveryChannelMeta && selectedDeliveryChannelMeta.targetPlaceholder ? selectedDeliveryChannelMeta.targetPlaceholder : '例如群聊 chatId / 用户 openId / channel-id'"
+                              @change="handleDeliveryTargetChange"
+                            >
+                              <el-option
+                                v-for="item in deliveryTargetOptions"
+                                :key="item.value"
+                                :label="item.label"
+                                :value="item.value"
+                              />
+                            </el-select>
+                            <el-input
+                              v-model.trim="openclawBinding.deliveryBinding.threadId"
+                              placeholder="可选：threadId"
+                              :disabled="!openclawBinding.deliveryBinding.enabled"
+                            />
+                            <el-select
+                              v-model="openclawBinding.deliveryBinding.format"
+                              placeholder="选择投递格式"
+                              :disabled="!openclawBinding.deliveryBinding.enabled"
+                            >
+                              <el-option label="text" value="text" />
+                              <el-option label="card" value="card" />
+                            </el-select>
+                          </div>
+                          <div
+                            v-if="openclawBinding.deliveryBinding.enabled && selectedDeliveryChannelMeta"
+                            class="openclaw-binding-meta"
+                          >
+                            <span>
+                              渠道：{{ formatDeliveryChannelLabel(selectedDeliveryChannelMeta) }}
+                            </span>
+                            <span v-if="selectedDeliveryChannelMeta.description">
+                              说明：{{ selectedDeliveryChannelMeta.description }}
+                            </span>
+                            <span v-if="selectedDeliveryChannelMeta.targetHint">
+                              Target 提示：{{ selectedDeliveryChannelMeta.targetHint }}
+                            </span>
+                            <span v-if="!deliveryAccountOptions.length && !deliveryTargetOptions.length">
+                              当前 inventory 未提供可枚举账号/目标，可直接手工输入。
+                            </span>
+                          </div>
+                          <div class="openclaw-binding-meta">
+                            <span v-if="openclawBinding.deliveryBinding.deliveryChannel">
+                              Channel: {{
+                                selectedDeliveryChannelMeta
+                                  ? formatDeliveryChannelLabel(selectedDeliveryChannelMeta)
+                                  : openclawBinding.deliveryBinding.deliveryChannel
+                              }}
+                            </span>
+                            <span v-if="openclawBinding.deliveryBinding.accountId">
+                              Account: {{ openclawBinding.deliveryBinding.accountLabel || openclawBinding.deliveryBinding.accountId }}
+                            </span>
+                            <span v-if="openclawBinding.deliveryBinding.target">
+                              Target: {{ openclawBinding.deliveryBinding.targetLabel || openclawBinding.deliveryBinding.target }}
+                            </span>
+                            <span v-if="openclawBinding.deliveryBinding.threadId">Thread: {{ openclawBinding.deliveryBinding.threadId }}</span>
+                          </div>
+                        </div>
                         <el-alert
                           v-if="openclawInventory.errorMessage || openclawBinding.errorMessage"
                           class="openclaw-alert"
@@ -509,6 +624,16 @@ const createEmptyOpenClawBinding = () => ({
   runtimeAccountLabel: "",
   openclawAgentId: "",
   openclawAgentName: "",
+  deliveryBinding: {
+    enabled: false,
+    deliveryChannel: "",
+    accountId: "",
+    accountLabel: "",
+    target: "",
+    targetLabel: "",
+    threadId: "",
+    format: "text",
+  },
   syncStatus: "native",
   errorMessage: "",
 });
@@ -520,6 +645,7 @@ const createEmptyOpenClawInventory = () => ({
   errorMessage: "",
   runtimeAccounts: [],
   agents: [],
+  deliveryChannels: [],
 });
 
 export default {
@@ -622,6 +748,43 @@ export default {
         this.openclawBinding.openclawAgentName
       );
     },
+    deliveryChannelOptions() {
+      return this.appendCurrentBindingOption(
+        this.openclawInventory.deliveryChannels,
+        this.openclawBinding.deliveryBinding.deliveryChannel,
+        this.resolveDeliveryChannelLabel(this.openclawBinding.deliveryBinding.deliveryChannel)
+      );
+    },
+    selectedDeliveryChannelMeta() {
+      if (!this.openclawBinding.deliveryBinding.deliveryChannel) {
+        return null;
+      }
+      return (
+        this.deliveryChannelOptions.find(
+          (item) => item.value === this.openclawBinding.deliveryBinding.deliveryChannel
+        ) || null
+      );
+    },
+    deliveryAccountOptions() {
+      const selectedChannel = this.selectedDeliveryChannelMeta;
+      return this.appendCurrentBindingOption(
+        selectedChannel && Array.isArray(selectedChannel.accountOptions)
+          ? selectedChannel.accountOptions
+          : [],
+        this.openclawBinding.deliveryBinding.accountId,
+        this.openclawBinding.deliveryBinding.accountLabel
+      );
+    },
+    deliveryTargetOptions() {
+      const selectedChannel = this.selectedDeliveryChannelMeta;
+      return this.appendCurrentBindingOption(
+        selectedChannel && Array.isArray(selectedChannel.targetOptions)
+          ? selectedChannel.targetOptions
+          : [],
+        this.openclawBinding.deliveryBinding.target,
+        this.openclawBinding.deliveryBinding.targetLabel
+      );
+    },
     openclawBindingStaleWarning() {
       const warnings = [];
       const runtimeAccounts = Array.isArray(this.openclawInventory.runtimeAccounts)
@@ -630,6 +793,10 @@ export default {
       const agents = Array.isArray(this.openclawInventory.agents)
         ? this.openclawInventory.agents
         : [];
+      const deliveryChannels = Array.isArray(this.openclawInventory.deliveryChannels)
+        ? this.openclawInventory.deliveryChannels
+        : [];
+      const deliveryBinding = this.openclawBinding.deliveryBinding || {};
 
       if (
         this.openclawBinding.runtimeAccount &&
@@ -645,6 +812,45 @@ export default {
         !agents.some((item) => item.value === this.openclawBinding.openclawAgentId)
       ) {
         warnings.push("当前绑定的 OpenClaw Agent 已不在最新 inventory 中，可能是历史脏数据");
+      }
+
+      if (
+        deliveryBinding.enabled &&
+        deliveryBinding.deliveryChannel &&
+        deliveryChannels.length &&
+        !deliveryChannels.some((item) => item.value === deliveryBinding.deliveryChannel)
+      ) {
+        warnings.push("当前详细稿投递渠道已不在最新 inventory 中");
+      }
+
+      const matchedDeliveryChannel = deliveryChannels.find(
+        (item) => item.value === deliveryBinding.deliveryChannel
+      );
+      const deliveryAccountOptions =
+        matchedDeliveryChannel && Array.isArray(matchedDeliveryChannel.accountOptions)
+          ? matchedDeliveryChannel.accountOptions
+          : [];
+      const deliveryTargetOptions =
+        matchedDeliveryChannel && Array.isArray(matchedDeliveryChannel.targetOptions)
+          ? matchedDeliveryChannel.targetOptions
+          : [];
+
+      if (
+        deliveryBinding.enabled &&
+        deliveryBinding.accountId &&
+        deliveryAccountOptions.length &&
+        !deliveryAccountOptions.some((item) => item.value === deliveryBinding.accountId)
+      ) {
+        warnings.push("当前详细稿投递账号已不在最新目录中");
+      }
+
+      if (
+        deliveryBinding.enabled &&
+        deliveryBinding.target &&
+        deliveryTargetOptions.length &&
+        !deliveryTargetOptions.some((item) => item.value === deliveryBinding.target)
+      ) {
+        warnings.push("当前详细稿投递目标已不在最新目录中");
       }
 
       return warnings.join("；");
@@ -958,6 +1164,10 @@ export default {
         const binding = {
           ...createEmptyOpenClawBinding(),
           ...(data.data || {}),
+          deliveryBinding: {
+            ...createEmptyOpenClawBinding().deliveryBinding,
+            ...((data.data && data.data.deliveryBinding) || {}),
+          },
         };
         this.agentType = binding.agentType || "native";
         this.openclawBinding = binding;
@@ -965,6 +1175,7 @@ export default {
           this.loadOpenClawInventory(binding.channelId);
         } else {
           this.openclawInventory = createEmptyOpenClawInventory();
+          this.syncOpenClawBindingLabels();
         }
       }, ({ data }) => {
         this.$message.error((data && data.msg) || "获取 OpenClaw 绑定配置失败");
@@ -983,6 +1194,7 @@ export default {
             ...createEmptyOpenClawInventory(),
             ...(data.data || {}),
           };
+          this.syncOpenClawBindingLabels();
           return;
         }
         this.openclawInventory = {
@@ -1033,6 +1245,34 @@ export default {
         this.openclawBinding.openclawAgentName || value
       );
     },
+    handleDeliveryChannelChange(value) {
+      const previousChannel = this.openclawBinding.deliveryBinding.deliveryChannel;
+      this.openclawBinding.deliveryBinding.deliveryChannel = value;
+      if (previousChannel !== value) {
+        this.openclawBinding.deliveryBinding.accountId = "";
+        this.openclawBinding.deliveryBinding.accountLabel = "";
+        this.openclawBinding.deliveryBinding.target = "";
+        this.openclawBinding.deliveryBinding.targetLabel = "";
+        this.openclawBinding.deliveryBinding.threadId = "";
+      }
+      this.syncDeliveryBindingLabels();
+    },
+    handleDeliveryAccountChange(value) {
+      this.openclawBinding.deliveryBinding.accountId = value;
+      this.openclawBinding.deliveryBinding.accountLabel = this.findOptionLabel(
+        this.deliveryAccountOptions,
+        value,
+        this.openclawBinding.deliveryBinding.accountLabel || value
+      );
+    },
+    handleDeliveryTargetChange(value) {
+      this.openclawBinding.deliveryBinding.target = value;
+      this.openclawBinding.deliveryBinding.targetLabel = this.findOptionLabel(
+        this.deliveryTargetOptions,
+        value,
+        this.openclawBinding.deliveryBinding.targetLabel || value
+      );
+    },
     clearOpenClawBinding() {
       this.$confirm("清空当前 OpenClaw 绑定后，需要重新选择 Channel、runtime/account 和 Agent。该操作不会立即保存，点击保存配置后才会生效。是否继续？", "提示", {
         confirmButtonText: "确定",
@@ -1044,6 +1284,9 @@ export default {
         this.openclawBinding.runtimeAccountLabel = "";
         this.openclawBinding.openclawAgentId = "";
         this.openclawBinding.openclawAgentName = "";
+        this.openclawBinding.deliveryBinding = {
+          ...createEmptyOpenClawBinding().deliveryBinding,
+        };
         this.openclawBinding.syncStatus = "configured";
         this.openclawBinding.errorMessage = "";
         this.openclawInventory = createEmptyOpenClawInventory();
@@ -1065,6 +1308,58 @@ export default {
       const matched = (options || []).find((item) => item.value === value);
       return matched ? matched.label : fallback;
     },
+    resolveDeliveryChannelMeta(channelId) {
+      return (
+        (this.openclawInventory.deliveryChannels || []).find((item) => item.value === channelId) || null
+      );
+    },
+    resolveDeliveryChannelLabel(channelId) {
+      const matched = this.resolveDeliveryChannelMeta(channelId);
+      return matched ? matched.label : channelId;
+    },
+    formatDeliveryChannelLabel(item) {
+      if (!item) {
+        return "";
+      }
+      if (!item.label || item.label === item.value) {
+        return item.value;
+      }
+      return `${item.label}（${item.value}）`;
+    },
+    syncOpenClawBindingLabels() {
+      if (this.openclawBinding.runtimeAccount) {
+        this.openclawBinding.runtimeAccountLabel = this.findOptionLabel(
+          this.openclawInventory.runtimeAccounts,
+          this.openclawBinding.runtimeAccount,
+          this.openclawBinding.runtimeAccountLabel || this.openclawBinding.runtimeAccount
+        );
+      }
+      if (this.openclawBinding.openclawAgentId) {
+        this.openclawBinding.openclawAgentName = this.findOptionLabel(
+          this.openclawInventory.agents,
+          this.openclawBinding.openclawAgentId,
+          this.openclawBinding.openclawAgentName || this.openclawBinding.openclawAgentId
+        );
+      }
+      this.syncDeliveryBindingLabels();
+    },
+    syncDeliveryBindingLabels() {
+      const deliveryBinding = this.openclawBinding.deliveryBinding || {};
+      if (deliveryBinding.accountId) {
+        deliveryBinding.accountLabel = this.findOptionLabel(
+          this.deliveryAccountOptions,
+          deliveryBinding.accountId,
+          deliveryBinding.accountLabel || deliveryBinding.accountId
+        );
+      }
+      if (deliveryBinding.target) {
+        deliveryBinding.targetLabel = this.findOptionLabel(
+          this.deliveryTargetOptions,
+          deliveryBinding.target,
+          deliveryBinding.targetLabel || deliveryBinding.target
+        );
+      }
+    },
     validateOpenClawBinding() {
       if (!this.openclawBinding.channelId) {
         this.$message.warning("OpenClaw 类型智能体必须先选择 Channel");
@@ -1077,6 +1372,16 @@ export default {
       if (!this.openclawBinding.openclawAgentId) {
         this.$message.warning("OpenClaw 类型智能体必须选择 OpenClaw Agent");
         return false;
+      }
+      if (this.openclawBinding.deliveryBinding && this.openclawBinding.deliveryBinding.enabled) {
+        if (!this.openclawBinding.deliveryBinding.deliveryChannel) {
+          this.$message.warning("启用详细稿投递后，必须选择详细稿投递渠道");
+          return false;
+        }
+        if (!this.openclawBinding.deliveryBinding.target) {
+          this.$message.warning("启用详细稿投递后，必须选择或填写 IM 目标");
+          return false;
+        }
       }
       return true;
     },
@@ -1092,10 +1397,15 @@ export default {
       });
     },
     saveOpenClawBindingRequest(agentId) {
+      this.syncOpenClawBindingLabels();
       const payload = this.isOpenClawAgent
         ? {
             ...createEmptyOpenClawBinding(),
             ...this.openclawBinding,
+            deliveryBinding: {
+              ...createEmptyOpenClawBinding().deliveryBinding,
+              ...(this.openclawBinding.deliveryBinding || {}),
+            },
             agentType: "openclaw",
             syncStatus: this.openclawInventory.healthy ? "connected" : "configured",
             errorMessage: this.openclawInventory.errorMessage || "",
@@ -1111,8 +1421,13 @@ export default {
             this.openclawBinding = {
               ...createEmptyOpenClawBinding(),
               ...(data.data || payload),
+              deliveryBinding: {
+                ...createEmptyOpenClawBinding().deliveryBinding,
+                ...(((data.data || payload).deliveryBinding) || {}),
+              },
             };
             this.agentType = this.openclawBinding.agentType || "native";
+            this.syncOpenClawBindingLabels();
             resolve(this.openclawBinding);
             return;
           }
@@ -2029,6 +2344,29 @@ export default {
   color: #6b7690;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.openclaw-delivery-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed #c9d8ff;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.openclaw-delivery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.openclaw-delivery-hint {
+  color: #61708f;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .openclaw-alert {

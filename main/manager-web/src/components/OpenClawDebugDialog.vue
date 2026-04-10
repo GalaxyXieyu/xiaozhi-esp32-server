@@ -44,14 +44,7 @@
         :selected-agent-needs-inventory-sync="selectedAgentNeedsInventorySync"
         :push-to-device="debugForm.pushToDevice"
         :browser-audio="debugForm.browserAudio"
-        :delivery-enabled="debugForm.deliveryBinding.enabled"
-        :delivery-channel="debugForm.deliveryBinding.deliveryChannel"
-        :delivery-account-id="debugForm.deliveryBinding.accountId"
-        :delivery-target="debugForm.deliveryBinding.target"
-        :delivery-thread-id="debugForm.deliveryBinding.threadId"
-        :delivery-channel-options="deliveryChannelOptions"
-        :delivery-account-options="deliveryAccountOptions"
-        :delivery-target-options="deliveryTargetOptions"
+        :delivery-summary="deliverySummary"
         :debug-session-id="debugForm.debugSessionId"
         :disable-clear-session="!debugForm.account || !debugForm.debugSessionId"
         :debug-clearing="debugClearing"
@@ -71,15 +64,91 @@
         @update:input-text="updateDebugInputText"
         @update:push-to-device="handlePushToDeviceChange"
         @update:browser-audio="handleBrowserAudioChange"
-        @update:delivery-enabled="handleDeliveryEnabledChange"
-        @update:delivery-channel="handleDeliveryChannelChange"
-        @update:delivery-account-id="handleDeliveryAccountChange"
-        @update:delivery-target="handleDeliveryTargetChange"
-        @update:delivery-thread-id="handleDeliveryThreadIdChange"
+        @open-settings="openSettingsDialog"
         @send="sendDirectChat"
         @play-message="playDebugMessageAudio"
       />
     </div>
+
+    <el-dialog
+      title="调试设置"
+      :visible.sync="settingsDialogVisible"
+      width="620px"
+      append-to-body
+      custom-class="openclaw-debug-settings-dialog"
+    >
+      <div class="debug-settings-form">
+        <div class="settings-row">
+          <span class="settings-label">详细稿投递</span>
+          <el-switch
+            v-model="debugForm.deliveryBinding.enabled"
+            :disabled="!debugReady"
+            @change="handleDeliveryEnabledChange"
+          />
+        </div>
+
+        <template v-if="debugForm.deliveryBinding.enabled">
+          <div class="settings-row settings-field">
+            <span class="settings-label">渠道</span>
+            <el-select
+              v-model="debugForm.deliveryBinding.deliveryChannel"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择详细稿投递渠道"
+              @change="handleDeliveryChannelChange"
+            >
+              <el-option
+                v-for="item in deliveryChannelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </div>
+
+          <div class="settings-row settings-field">
+            <span class="settings-label">目标</span>
+            <el-select
+              v-model="debugForm.deliveryBinding.target"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或填写 IM 目标"
+              @change="handleDeliveryTargetChange"
+            >
+              <el-option
+                v-for="item in deliveryTargetOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </div>
+
+          <div v-if="showDeliveryAccountField" class="settings-row settings-field">
+            <span class="settings-label">账号</span>
+            <el-select
+              v-model="debugForm.deliveryBinding.accountId"
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              placeholder="可选：选择 IM 账号"
+              @change="handleDeliveryAccountChange"
+            >
+              <el-option
+                v-for="item in deliveryAccountOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+            <div class="settings-hint">只有同一渠道下存在多个可用账号时才需要区分。</div>
+          </div>
+        </template>
+      </div>
+    </el-dialog>
   </el-dialog>
 </template>
 
@@ -150,6 +219,7 @@ export default {
       debugPollingTimer: null,
       latestBrowserAudioText: "",
       isFullscreen: false,
+      settingsDialogVisible: false,
     };
   },
   computed: {
@@ -224,6 +294,23 @@ export default {
         this.debugForm.deliveryBinding.target,
         this.debugForm.deliveryBinding.targetLabel
       );
+    },
+    showDeliveryAccountField() {
+      return this.deliveryAccountOptions.length > 1 || Boolean(this.debugForm.deliveryBinding.accountId);
+    },
+    deliverySummary() {
+      const binding = this.debugForm.deliveryBinding || {};
+      if (!binding.enabled) {
+        return "详细稿投递：未启用";
+      }
+      const channel = this.resolveDeliveryChannelLabel(binding.deliveryChannel) || "未选择渠道";
+      const target = binding.targetLabel || binding.target || "未选择目标";
+      const account = this.showDeliveryAccountField
+        ? (binding.accountLabel || binding.accountId || "未选择账号")
+        : "";
+      return account
+        ? `详细稿投递：${channel} / ${account} / ${target}`
+        : `详细稿投递：${channel} / ${target}`;
     },
     connectionItems() {
       return (Array.isArray(this.connections) ? this.connections : []).map((item) => ({
@@ -398,6 +485,7 @@ export default {
       this.debugTraceSeq = 0;
       this.latestBrowserAudioText = "";
       this.isFullscreen = false;
+      this.settingsDialogVisible = false;
     },
     getHistoryStorageKey() {
       return `${DEBUG_HISTORY_PREFIX}${this.channelId || "unknown"}`;
@@ -592,6 +680,19 @@ export default {
         this.debugForm.deliveryBinding = {
           ...createEmptyDeliveryBinding(),
         };
+        return;
+      }
+      if (
+        !this.debugForm.deliveryBinding.accountId &&
+        this.deliveryAccountOptions.length === 1
+      ) {
+        this.handleDeliveryAccountChange(this.deliveryAccountOptions[0].value);
+      }
+      if (
+        !this.debugForm.deliveryBinding.target &&
+        this.deliveryTargetOptions.length === 1
+      ) {
+        this.handleDeliveryTargetChange(this.deliveryTargetOptions[0].value);
       }
     },
     handleDeliveryChannelChange(value) {
@@ -605,6 +706,18 @@ export default {
         this.debugForm.deliveryBinding.threadId = "";
       }
       this.syncDeliveryBindingLabels();
+      if (
+        !this.debugForm.deliveryBinding.accountId &&
+        this.deliveryAccountOptions.length === 1
+      ) {
+        this.handleDeliveryAccountChange(this.deliveryAccountOptions[0].value);
+      }
+      if (
+        !this.debugForm.deliveryBinding.target &&
+        this.deliveryTargetOptions.length === 1
+      ) {
+        this.handleDeliveryTargetChange(this.deliveryTargetOptions[0].value);
+      }
     },
     handleDeliveryAccountChange(value) {
       this.debugForm.deliveryBinding.accountId = value;
@@ -621,9 +734,6 @@ export default {
         value,
         this.debugForm.deliveryBinding.targetLabel || value
       );
-    },
-    handleDeliveryThreadIdChange(value) {
-      this.debugForm.deliveryBinding.threadId = value;
     },
     syncDeliveryBindingLabels() {
       const deliveryBinding = this.debugForm.deliveryBinding || {};
@@ -651,6 +761,9 @@ export default {
         this.latestBrowserAudioText = "";
         this.stopBrowserAudio();
       }
+    },
+    openSettingsDialog() {
+      this.settingsDialogVisible = true;
     },
     findOptionLabel(list, value, fallback = "") {
       const matched = (Array.isArray(list) ? list : []).find((item) => item.value === value);
@@ -877,7 +990,6 @@ export default {
             accountLabel: deliveryBinding.accountLabel,
             target: deliveryBinding.target,
             targetLabel: deliveryBinding.targetLabel,
-            threadId: deliveryBinding.threadId,
             format: deliveryBinding.format || "text",
           } : {
             enabled: false,

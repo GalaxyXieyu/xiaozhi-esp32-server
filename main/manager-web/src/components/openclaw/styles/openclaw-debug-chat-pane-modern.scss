@@ -762,6 +762,22 @@
   opacity: 0.72;
 }
 
+.control-settings-button {
+  min-width: 112px;
+  height: 46px;
+  border-radius: 14px;
+  border-color: rgba(216, 226, 240, 0.98);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 253, 0.98) 100%);
+  color: #35506f;
+  font-weight: 600;
+}
+
+.control-settings-button:hover,
+.control-settings-button:focus {
+  border-color: rgba(134, 164, 210, 0.92);
+  color: #25496f;
+}
+
 .composer-note {
   margin-bottom: 12px;
   padding: 9px 12px;

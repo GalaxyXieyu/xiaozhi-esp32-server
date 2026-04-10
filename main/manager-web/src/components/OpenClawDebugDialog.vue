@@ -1,12 +1,25 @@
 <template>
   <el-dialog
     :visible.sync="dialogVisible"
-    :title="dialogTitle"
-    width="86%"
-    top="4vh"
-    custom-class="openclaw-debug-dialog"
+    :width="dialogWidth"
+    :top="dialogTop"
+    :custom-class="dialogClass"
     :before-close="handleClose"
   >
+    <template slot="title">
+      <div class="debug-dialog-titlebar">
+        <span class="debug-dialog-title">{{ dialogTitle }}</span>
+        <el-button
+          size="mini"
+          plain
+          class="debug-dialog-fullscreen-toggle"
+          @click.stop="toggleFullscreen"
+        >
+          {{ isFullscreen ? "退出全屏" : "全屏模式" }}
+        </el-button>
+      </div>
+    </template>
+
     <div class="debug-shell">
       <OpenClawDebugChatPaneModern
         :channel-name="channelName"
@@ -119,6 +132,7 @@ export default {
       debugTraceSeq: 0,
       debugPollingTimer: null,
       latestBrowserAudioText: "",
+      isFullscreen: false,
     };
   },
   computed: {
@@ -130,6 +144,15 @@ export default {
     },
     dialogTitle() {
       return `OpenClaw 在线调试${this.channelId ? ` · ${this.channelName}` : ""}`;
+    },
+    dialogWidth() {
+      return this.isFullscreen ? "calc(100vw - 12px)" : "86%";
+    },
+    dialogTop() {
+      return this.isFullscreen ? "0" : "4vh";
+    },
+    dialogClass() {
+      return `openclaw-debug-dialog${this.isFullscreen ? " is-fullscreen" : ""}`;
     },
     runtimeAccounts() {
       return Array.isArray(this.inventory.runtimeAccounts) ? this.inventory.runtimeAccounts : [];
@@ -248,6 +271,7 @@ export default {
       if (!val) {
         this.stopDebugPolling();
         this.stopBrowserAudio();
+        this.isFullscreen = false;
         this.$emit("update:visible", false);
       }
     },
@@ -291,7 +315,11 @@ export default {
     handleClose() {
       this.stopDebugPolling();
       this.stopBrowserAudio();
+      this.isFullscreen = false;
       this.dialogVisible = false;
+    },
+    toggleFullscreen() {
+      this.isFullscreen = !this.isFullscreen;
     },
     updateDebugInputText(value) {
       this.debugForm.inputText = value;
@@ -311,6 +339,7 @@ export default {
       this.routePrefillApplied = false;
       this.debugTraceSeq = 0;
       this.latestBrowserAudioText = "";
+      this.isFullscreen = false;
     },
     getHistoryStorageKey() {
       return `${DEBUG_HISTORY_PREFIX}${this.channelId || "unknown"}`;
@@ -781,8 +810,11 @@ export default {
           return Number.isFinite(seq) && seq > maxSeq ? seq : maxSeq;
         }, this.debugTraceSeq);
         this.debugTraceSeq = maxEventSeq;
-        if (snapshot.latestReplyText) {
-          this.syncReplyFromSnapshot(snapshot);
+        const hasReplyReadyEvent = events.some((event) => event && event.type === "reply_ready");
+        if (snapshot.latestReplyText && !snapshot.pending && !hasReplyReadyEvent) {
+          this.syncReplyFromSnapshot(snapshot, {
+            turnId: this.activeDebugTurnId || this.getLatestTurnId(),
+          });
         }
         if (snapshot.browserAudio && snapshot.browserAudio.ready && snapshot.browserAudio.text) {
           this.latestBrowserAudioText = snapshot.browserAudio.text;
@@ -801,13 +833,14 @@ export default {
         this.stopDebugPolling();
       });
     },
-    syncReplyFromSnapshot(snapshot = {}) {
+    syncReplyFromSnapshot(snapshot = {}, extra = {}) {
       const replyText = typeof snapshot.latestReplyText === "string" ? snapshot.latestReplyText.trim() : "";
       if (!replyText) {
         return;
       }
       this.upsertAssistantMessage(replyText, {
         meta: [snapshot.agentName || snapshot.agentId, snapshot.status].filter(Boolean).join(" / "),
+        turnId: extra.turnId || this.activeDebugTurnId || this.getLatestTurnId(),
       });
     },
     formatTraceStatus(event) {
@@ -895,6 +928,7 @@ export default {
       if (event.type === "reply_ready") {
         this.upsertAssistantMessage(event.message || "OpenClaw 已生成最终回复", {
           meta: [event.agentName || event.agentId, event.status].filter(Boolean).join(" / "),
+          turnId: this.activeDebugTurnId || this.getLatestTurnId(),
         });
         return;
       }

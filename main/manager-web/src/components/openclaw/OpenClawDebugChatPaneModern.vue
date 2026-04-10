@@ -3,15 +3,11 @@
     <header class="modern-header">
       <div class="modern-toolbar-meta">
         <span class="toolbar-chip toolbar-chip-strong">{{ channelName }}</span>
-        <span class="toolbar-chip">{{ currentRuntimeLabel }}</span>
-        <span class="toolbar-chip">{{ agentLabel || "未选择 Agent" }}</span>
+        <span v-if="runtimeChipLabel" class="toolbar-chip">{{ runtimeChipLabel }}</span>
+        <span class="toolbar-chip subtle">{{ availabilityChipLabel }}</span>
         <span v-if="!debugReady" class="toolbar-chip offline">
           {{ hasAvailableBridge ? "等待连接" : "等待 Bridge" }}
         </span>
-        <span class="toolbar-chip subtle">在线服务 {{ connectedBridgeCount }}</span>
-        <span v-if="connectionCount > 0" class="toolbar-chip subtle">在线设备 {{ connectionCount }}</span>
-        <span v-else-if="connectionsLoading" class="toolbar-chip subtle">设备同步中</span>
-        <span v-else class="toolbar-chip subtle">暂无在线设备</span>
       </div>
       <div class="modern-header-actions">
         <el-button
@@ -183,15 +179,16 @@
             当前 Agent 未出现在 inventory 中，建议先同步 OpenClaw inventory。
           </div>
 
-          <div v-if="deliverySummary" class="composer-note muted">
-            {{ deliverySummary }}
+          <div v-if="deliverySummary" class="composer-inline-summary" :title="deliverySummary">
+            <span class="composer-inline-label">详细稿投递</span>
+            <span class="composer-inline-value">{{ deliverySummary }}</span>
           </div>
 
           <el-input
             v-model="localInputText"
             class="composer-input"
             type="textarea"
-            :rows="5"
+            :rows="4"
             resize="none"
             placeholder="输入调试消息，Ctrl + Enter 发送"
             @keyup.ctrl.enter.native="$emit('send')"
@@ -454,6 +451,23 @@ export default {
         }
       }
       return "";
+    },
+    runtimeChipLabel() {
+      const label = String(this.currentRuntimeLabel || "").trim();
+      if (!label) {
+        return "";
+      }
+      return label === this.channelName ? "" : label;
+    },
+    availabilityChipLabel() {
+      const bridgeLabel = `服务 ${this.connectedBridgeCount}`;
+      if (this.connectionsLoading && this.connectionCount <= 0) {
+        return `${bridgeLabel} · 设备同步中`;
+      }
+      if (this.connectionCount > 0) {
+        return `${bridgeLabel} · 设备 ${this.connectionCount}`;
+      }
+      return `${bridgeLabel} · 暂无设备`;
     },
   },
   watch: {

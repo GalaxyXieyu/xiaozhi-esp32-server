@@ -13,7 +13,7 @@
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  padding: 8px 6px 4px;
+  padding: 4px 4px 2px;
   color: var(--oc-ink);
 }
 
@@ -31,9 +31,9 @@
 .modern-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 0 4px 10px;
+  padding: 0 2px 8px;
   position: relative;
   z-index: 1;
   border-bottom: 1px solid rgba(225, 232, 243, 0.84);
@@ -43,20 +43,20 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .toolbar-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 5px 11px;
+  min-height: 26px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid rgba(214, 223, 236, 0.96);
   background: rgba(255, 255, 255, 0.76);
   color: #405874;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -82,17 +82,17 @@
 
 .modern-header-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .modern-header-actions ::v-deep .el-button {
-  min-width: 72px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 12px;
+  min-width: 64px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 10px;
   border-color: rgba(206, 217, 233, 0.98);
   background: rgba(255, 255, 255, 0.84);
   color: #35506f;
@@ -125,7 +125,7 @@
 .modern-layout {
   display: grid;
   grid-template-columns: clamp(244px, 24vw, 320px) minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
   position: relative;
@@ -147,7 +147,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px 14px 14px;
+  padding: 14px 12px 12px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 254, 0.96) 100%);
   box-shadow:
@@ -160,12 +160,12 @@
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  padding: 0 2px 8px;
+  padding: 0 2px 6px;
 }
 
 .panel-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.2;
   letter-spacing: 0.01em;
 }
@@ -174,8 +174,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
+  min-width: 28px;
+  height: 28px;
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid rgba(198, 211, 231, 0.98);
@@ -189,9 +189,9 @@
 .sessions-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
-  margin-top: 12px;
+  margin-top: 8px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 2px 6px 4px 2px;
@@ -223,9 +223,9 @@
   gap: 10px;
   width: 100%;
   min-width: 0;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid rgba(221, 231, 243, 0.92);
-  border-radius: 16px;
+  border-radius: 14px;
   background: linear-gradient(180deg, rgba(250, 252, 255, 0.98) 0%, rgba(244, 248, 253, 0.98) 100%);
   text-align: left;
   cursor: pointer;
@@ -313,9 +313,9 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border-radius: 14px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(246, 249, 253, 0.98) 0%, rgba(240, 245, 251, 0.98) 100%);
   border: 1px solid rgba(222, 230, 241, 0.98);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
@@ -460,7 +460,7 @@
 .conversation-panel {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 16px;
+  gap: 12px;
   min-height: 0;
 }
 
@@ -468,7 +468,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 16px;
+  padding: 12px;
   background:
     radial-gradient(circle at top right, rgba(198, 220, 255, 0.18), transparent 26%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 251, 255, 0.98) 100%);
@@ -501,12 +501,12 @@
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .message-row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
 }
 
@@ -546,9 +546,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
@@ -559,7 +559,7 @@
 .message-stack {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   width: min(100%, 720px);
 }
@@ -585,15 +585,15 @@
 }
 
 .message-card {
-  padding: 13px 15px;
-  border-radius: 18px;
+  padding: 11px 13px;
+  border-radius: 16px;
   box-shadow: 0 12px 24px rgba(27, 50, 83, 0.06);
   text-align: left;
 }
 
 .message-text {
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: 12px;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
   text-align: left;
@@ -601,11 +601,11 @@
 
 .transcript-empty {
   min-height: 100%;
-  padding: 36px 28px;
+  padding: 28px 24px;
 }
 
 .composer-shell {
-  padding: 16px;
+  padding: 12px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 248, 252, 0.98) 100%);
   box-shadow:
@@ -615,23 +615,23 @@
 
 .composer-controls {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .control-field {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 260px;
+  flex: 1 1 240px;
   min-width: 0;
-  min-height: 46px;
-  height: 46px;
-  padding: 7px 12px;
+  min-height: 40px;
+  height: 40px;
+  padding: 5px 10px;
   border: 1px solid rgba(216, 226, 240, 0.98);
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 253, 0.98) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
   box-sizing: border-box;
@@ -640,7 +640,7 @@
 .control-label {
   flex: 0 0 auto;
   color: #62758f;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -654,8 +654,8 @@
 }
 
 .control-select ::v-deep .el-input__inner {
-  height: 32px;
-  line-height: 32px;
+  height: 28px;
+  line-height: 28px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -726,12 +726,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex: 0 1 182px;
-  min-height: 46px;
-  height: 46px;
-  padding: 0 12px;
+  flex: 0 1 156px;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 10px;
   border: 1px solid rgba(216, 226, 240, 0.98);
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 253, 0.98) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
   box-sizing: border-box;
@@ -739,7 +739,7 @@
 
 .control-switch-text {
   color: #344a64;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -763,9 +763,10 @@
 }
 
 .control-settings-button {
-  min-width: 112px;
-  height: 46px;
-  border-radius: 14px;
+  min-width: 96px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
   border-color: rgba(216, 226, 240, 0.98);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 253, 0.98) 100%);
   color: #35506f;
@@ -779,20 +780,14 @@
 }
 
 .composer-note {
-  margin-bottom: 12px;
-  padding: 9px 12px;
-  border-radius: 14px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
   border: 1px solid transparent;
   background: linear-gradient(180deg, #edf4ff 0%, #e7effd 100%);
   color: #31517a;
   font-size: 12px;
   line-height: 1.6;
-}
-
-.composer-note.muted {
-  border-color: rgba(226, 231, 239, 0.98);
-  background: linear-gradient(180deg, #f8f9fc 0%, #f2f5f8 100%);
-  color: #71819a;
 }
 
 .composer-note.warning {
@@ -813,9 +808,37 @@
   color: #a3453b;
 }
 
+.composer-inline-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 231, 239, 0.98);
+  background: linear-gradient(180deg, #fafbfd 0%, #f4f7fa 100%);
+  color: #60738f;
+}
+
+.composer-inline-label {
+  flex: 0 0 auto;
+  color: #516883;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.composer-inline-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
 .composer-input ::v-deep .el-textarea__inner {
-  min-height: 124px !important;
-  border-radius: 18px;
+  min-height: 104px !important;
+  border-radius: 16px;
   border-color: rgba(216, 226, 240, 0.98);
   background: linear-gradient(180deg, rgba(251, 253, 255, 0.98) 0%, rgba(246, 249, 253, 0.98) 100%);
   color: var(--oc-ink);
@@ -841,7 +864,7 @@
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .composer-tip {
@@ -852,10 +875,10 @@
 
 .composer-footer ::v-deep .el-button--primary {
   min-width: 88px;
-  height: 38px;
+  height: 34px;
   padding: 0 18px;
   border: 0;
-  border-radius: 13px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #2d65db 0%, #4d8bff 100%);
   box-shadow: 0 14px 28px rgba(45, 101, 219, 0.24);
 }
@@ -904,7 +927,8 @@
   }
 
   .control-field,
-  .control-switch {
+  .control-switch,
+  .control-settings-button {
     width: 100%;
   }
 

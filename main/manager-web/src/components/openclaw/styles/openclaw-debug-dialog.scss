@@ -14,7 +14,7 @@
 
 ::v-deep .openclaw-debug-dialog .el-dialog__header {
   position: relative;
-  padding: 16px 66px 12px 22px;
+  padding: 14px 62px 10px 20px;
   border-bottom: 1px solid rgba(225, 232, 243, 0.9);
   background:
     radial-gradient(circle at top left, rgba(122, 163, 255, 0.1), transparent 42%),
@@ -111,7 +111,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 12px 14px 14px;
+  padding: 10px 12px 12px;
   background:
     radial-gradient(circle at top right, rgba(198, 219, 255, 0.12), transparent 24%),
     linear-gradient(180deg, #fbfcfe 0%, #f6f8fc 100%);
@@ -122,7 +122,7 @@
   flex-direction: column;
   flex: 1;
   gap: 0;
-  height: min(78vh, 820px);
+  height: min(80vh, 840px);
   min-height: 0;
   overflow: hidden;
 }
@@ -137,7 +137,7 @@
 }
 
 ::v-deep .openclaw-debug-dialog.is-fullscreen .el-dialog__body {
-  padding: 14px 16px 16px;
+  padding: 12px 14px 14px;
 }
 
 ::v-deep .openclaw-debug-dialog.is-fullscreen .debug-shell {
@@ -159,7 +159,7 @@
   }
 
   ::v-deep .openclaw-debug-dialog .el-dialog__header {
-    padding: 14px 52px 12px 16px;
+    padding: 12px 48px 10px 14px;
   }
 
   ::v-deep .openclaw-debug-dialog .el-dialog__header::after {
@@ -172,7 +172,7 @@
   }
 
   ::v-deep .openclaw-debug-dialog .el-dialog__body {
-    padding: 14px;
+    padding: 10px;
   }
 
   .debug-shell {

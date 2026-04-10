@@ -301,7 +301,7 @@ export default {
     deliverySummary() {
       const binding = this.debugForm.deliveryBinding || {};
       if (!binding.enabled) {
-        return "详细稿投递：未启用";
+        return "";
       }
       const channel = this.resolveDeliveryChannelLabel(binding.deliveryChannel) || "未选择渠道";
       const target = binding.targetLabel || binding.target || "未选择目标";
@@ -309,8 +309,8 @@ export default {
         ? (binding.accountLabel || binding.accountId || "未选择账号")
         : "";
       return account
-        ? `详细稿投递：${channel} / ${account} / ${target}`
-        : `详细稿投递：${channel} / ${target}`;
+        ? `${channel} / ${account} / ${target}`
+        : `${channel} / ${target}`;
     },
     connectionItems() {
       return (Array.isArray(this.connections) ? this.connections : []).map((item) => ({

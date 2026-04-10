@@ -167,7 +167,8 @@
               :disabled="!debugReady"
               @click="$emit('open-settings')"
             >
-              调试设置
+              <i class="el-icon-setting"></i>
+              <span>设置</span>
             </el-button>
           </div>
 

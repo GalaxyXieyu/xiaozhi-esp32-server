@@ -371,7 +371,9 @@
 }
 
 .control-field-runtime,
-.control-field-agent {
+.control-field-agent,
+.control-field-target,
+.control-field-thread {
   flex: 0 1 320px;
   width: min(100%, 320px);
 }
@@ -380,8 +382,31 @@
   max-width: 360px;
 }
 
+.control-field-target {
+  max-width: 420px;
+}
+
+.control-field-thread {
+  max-width: 240px;
+}
+
 .control-field-agent .control-select {
   min-width: 0;
+}
+
+.control-field-thread ::v-deep .el-input__inner {
+  height: 32px;
+  line-height: 32px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--oc-ink);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.composer-controls-delivery {
+  margin-top: -2px;
 }
 
 .sessions-empty,

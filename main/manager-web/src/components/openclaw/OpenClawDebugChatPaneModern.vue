@@ -164,6 +164,90 @@
               <span class="control-switch-text">浏览器语音</span>
               <el-switch v-model="localBrowserAudio" :disabled="!debugReady" />
             </label>
+
+            <label class="control-switch">
+              <span class="control-switch-text">详细稿投递</span>
+              <el-switch v-model="localDeliveryEnabled" :disabled="!debugReady" />
+            </label>
+          </div>
+
+          <div v-if="localDeliveryEnabled" class="composer-controls composer-controls-delivery">
+            <div class="control-field control-field-runtime">
+              <span class="control-label">渠道</span>
+              <el-select
+                v-model="localDeliveryChannel"
+                class="control-select"
+                size="small"
+                filterable
+                allow-create
+                default-first-option
+                :popper-append-to-body="false"
+                :disabled="!debugReady"
+                placeholder="选择详细稿投递渠道"
+              >
+                <el-option
+                  v-for="item in deliveryChannelOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <div class="control-field control-field-agent">
+              <span class="control-label">账号</span>
+              <el-select
+                v-model="localDeliveryAccountId"
+                class="control-select"
+                size="small"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                :popper-append-to-body="false"
+                :disabled="!debugReady || !localDeliveryChannel"
+                placeholder="可选：选择 IM 账号"
+              >
+                <el-option
+                  v-for="item in deliveryAccountOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <div class="control-field control-field-target">
+              <span class="control-label">目标</span>
+              <el-select
+                v-model="localDeliveryTarget"
+                class="control-select"
+                size="small"
+                filterable
+                allow-create
+                default-first-option
+                :popper-append-to-body="false"
+                :disabled="!debugReady || !localDeliveryChannel"
+                placeholder="选择或填写 IM 目标"
+              >
+                <el-option
+                  v-for="item in deliveryTargetOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+
+            <div class="control-field control-field-thread">
+              <span class="control-label">Thread</span>
+              <el-input
+                v-model.trim="localDeliveryThreadId"
+                size="small"
+                :disabled="!debugReady"
+                placeholder="可选：Thread ID"
+              />
+            </div>
           </div>
 
           <div v-if="!debugReady" class="composer-note danger">
@@ -282,6 +366,38 @@ export default {
       type: Boolean,
       default: false,
     },
+    deliveryEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    deliveryChannel: {
+      type: String,
+      default: "",
+    },
+    deliveryAccountId: {
+      type: String,
+      default: "",
+    },
+    deliveryTarget: {
+      type: String,
+      default: "",
+    },
+    deliveryThreadId: {
+      type: String,
+      default: "",
+    },
+    deliveryChannelOptions: {
+      type: Array,
+      default: () => [],
+    },
+    deliveryAccountOptions: {
+      type: Array,
+      default: () => [],
+    },
+    deliveryTargetOptions: {
+      type: Array,
+      default: () => [],
+    },
     debugSessionId: {
       type: String,
       default: "",
@@ -354,6 +470,46 @@ export default {
       },
       set(value) {
         this.$emit("update:browser-audio", value);
+      },
+    },
+    localDeliveryEnabled: {
+      get() {
+        return this.deliveryEnabled;
+      },
+      set(value) {
+        this.$emit("update:delivery-enabled", value);
+      },
+    },
+    localDeliveryChannel: {
+      get() {
+        return this.deliveryChannel;
+      },
+      set(value) {
+        this.$emit("update:delivery-channel", value);
+      },
+    },
+    localDeliveryAccountId: {
+      get() {
+        return this.deliveryAccountId;
+      },
+      set(value) {
+        this.$emit("update:delivery-account-id", value);
+      },
+    },
+    localDeliveryTarget: {
+      get() {
+        return this.deliveryTarget;
+      },
+      set(value) {
+        this.$emit("update:delivery-target", value);
+      },
+    },
+    localDeliveryThreadId: {
+      get() {
+        return this.deliveryThreadId;
+      },
+      set(value) {
+        this.$emit("update:delivery-thread-id", value);
       },
     },
     localInputText: {

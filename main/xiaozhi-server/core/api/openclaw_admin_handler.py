@@ -877,6 +877,9 @@ class OpenClawAdminHandler(BaseHandler):
         agent_name = (data.get("agentName") or "").strip() or None
         push_to_device = bool(data.get("pushToDevice"))
         browser_audio = bool(data.get("browserAudio"))
+        delivery_binding = data.get("deliveryBinding")
+        if not isinstance(delivery_binding, dict):
+            delivery_binding = None
 
         bind_result = None
         try:
@@ -907,6 +910,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "deferReply": True,
                     "pushToDevice": push_to_device,
                     "browserAudio": browser_audio,
+                    "deliveryBinding": delivery_binding,
                     "bridgeId": bridge_id,
                 },
                 bridge_id=bridge_id,

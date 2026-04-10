@@ -44,6 +44,14 @@
         :selected-agent-needs-inventory-sync="selectedAgentNeedsInventorySync"
         :push-to-device="debugForm.pushToDevice"
         :browser-audio="debugForm.browserAudio"
+        :delivery-enabled="debugForm.deliveryBinding.enabled"
+        :delivery-channel="debugForm.deliveryBinding.deliveryChannel"
+        :delivery-account-id="debugForm.deliveryBinding.accountId"
+        :delivery-target="debugForm.deliveryBinding.target"
+        :delivery-thread-id="debugForm.deliveryBinding.threadId"
+        :delivery-channel-options="deliveryChannelOptions"
+        :delivery-account-options="deliveryAccountOptions"
+        :delivery-target-options="deliveryTargetOptions"
         :debug-session-id="debugForm.debugSessionId"
         :disable-clear-session="!debugForm.account || !debugForm.debugSessionId"
         :debug-clearing="debugClearing"
@@ -63,6 +71,11 @@
         @update:input-text="updateDebugInputText"
         @update:push-to-device="handlePushToDeviceChange"
         @update:browser-audio="handleBrowserAudioChange"
+        @update:delivery-enabled="handleDeliveryEnabledChange"
+        @update:delivery-channel="handleDeliveryChannelChange"
+        @update:delivery-account-id="handleDeliveryAccountChange"
+        @update:delivery-target="handleDeliveryTargetChange"
+        @update:delivery-thread-id="handleDeliveryThreadIdChange"
         @send="sendDirectChat"
         @play-message="playDebugMessageAudio"
       />
@@ -75,6 +88,7 @@ import Api from "@/apis/api";
 import OpenClawDebugChatPaneModern from "@/components/openclaw/OpenClawDebugChatPaneModern.vue";
 import {
   buildConnectionKey,
+  createEmptyDeliveryBinding,
   createEmptyDebugForm,
   DEBUG_HISTORY_PREFIX,
   formatHistoryTime,
@@ -175,6 +189,42 @@ export default {
       }
       return this.bridgeItems.filter((item) => item.account === this.debugForm.account);
     },
+    deliveryChannelOptions() {
+      const source = Array.isArray(this.inventory.deliveryChannels) ? this.inventory.deliveryChannels : [];
+      return this.appendCurrentBindingOption(
+        source,
+        this.debugForm.deliveryBinding.deliveryChannel,
+        this.resolveDeliveryChannelLabel(this.debugForm.deliveryBinding.deliveryChannel)
+      );
+    },
+    selectedDeliveryChannelMeta() {
+      if (!this.debugForm.deliveryBinding.deliveryChannel) {
+        return null;
+      }
+      return this.deliveryChannelOptions.find(
+        (item) => item.value === this.debugForm.deliveryBinding.deliveryChannel
+      ) || null;
+    },
+    deliveryAccountOptions() {
+      const accounts = Array.isArray(this.selectedDeliveryChannelMeta?.accounts)
+        ? this.selectedDeliveryChannelMeta.accounts
+        : [];
+      return this.appendCurrentBindingOption(
+        accounts,
+        this.debugForm.deliveryBinding.accountId,
+        this.debugForm.deliveryBinding.accountLabel
+      );
+    },
+    deliveryTargetOptions() {
+      const targets = Array.isArray(this.selectedDeliveryChannelMeta?.targets)
+        ? this.selectedDeliveryChannelMeta.targets
+        : [];
+      return this.appendCurrentBindingOption(
+        targets,
+        this.debugForm.deliveryBinding.target,
+        this.debugForm.deliveryBinding.targetLabel
+      );
+    },
     connectionItems() {
       return (Array.isArray(this.connections) ? this.connections : []).map((item) => ({
         ...item,
@@ -251,13 +301,18 @@ export default {
       return Boolean(matched && matched.ghost);
     },
     canSendDirectChat() {
+      const deliveryBinding = this.debugForm.deliveryBinding || {};
       return Boolean(
         this.channelId &&
         this.debugForm.account &&
         this.debugForm.agentId &&
         this.debugReady &&
         this.debugForm.inputText &&
-        this.debugForm.inputText.trim()
+        this.debugForm.inputText.trim() &&
+        (
+          !deliveryBinding.enabled ||
+          (deliveryBinding.deliveryChannel && deliveryBinding.target)
+        )
       );
     },
   },
@@ -393,6 +448,10 @@ export default {
         agentName: this.debugForm.agentName,
         pushToDevice: this.debugForm.pushToDevice,
         browserAudio: this.debugForm.browserAudio,
+        deliveryBinding: {
+          ...createEmptyDeliveryBinding(),
+          ...(this.debugForm.deliveryBinding || {}),
+        },
         traceNextSeq: this.debugTraceSeq,
         latestBrowserAudioText: this.latestBrowserAudioText,
         updatedAt: now,
@@ -450,6 +509,7 @@ export default {
       }
 
       this.syncDebugAgent();
+      this.syncDeliveryBindingLabels();
       if (!this.routePrefillApplied) {
         this.routePrefillApplied = true;
       }
@@ -504,6 +564,83 @@ export default {
     handleDebugAgentChange(value) {
       this.debugForm.agentId = value;
       this.debugForm.agentName = this.findOptionLabel(this.currentDebugAgentOptions, value, this.debugForm.agentName || value);
+    },
+    appendCurrentBindingOption(options, currentValue, currentLabel) {
+      const list = Array.isArray(options) ? options.slice() : [];
+      if (!currentValue || list.some((item) => item.value === currentValue)) {
+        return list;
+      }
+      list.unshift({
+        value: currentValue,
+        label: currentLabel ? `${currentLabel}（当前绑定）` : `${currentValue}（当前绑定）`,
+      });
+      return list;
+    },
+    resolveDeliveryChannelMeta(channelId) {
+      return (
+        (Array.isArray(this.inventory.deliveryChannels) ? this.inventory.deliveryChannels : [])
+          .find((item) => item.value === channelId) || null
+      );
+    },
+    resolveDeliveryChannelLabel(channelId) {
+      const matched = this.resolveDeliveryChannelMeta(channelId);
+      return matched ? matched.label : channelId;
+    },
+    handleDeliveryEnabledChange(value) {
+      this.debugForm.deliveryBinding.enabled = Boolean(value);
+      if (!this.debugForm.deliveryBinding.enabled) {
+        this.debugForm.deliveryBinding = {
+          ...createEmptyDeliveryBinding(),
+        };
+      }
+    },
+    handleDeliveryChannelChange(value) {
+      const previousChannel = this.debugForm.deliveryBinding.deliveryChannel;
+      this.debugForm.deliveryBinding.deliveryChannel = value;
+      if (previousChannel !== value) {
+        this.debugForm.deliveryBinding.accountId = "";
+        this.debugForm.deliveryBinding.accountLabel = "";
+        this.debugForm.deliveryBinding.target = "";
+        this.debugForm.deliveryBinding.targetLabel = "";
+        this.debugForm.deliveryBinding.threadId = "";
+      }
+      this.syncDeliveryBindingLabels();
+    },
+    handleDeliveryAccountChange(value) {
+      this.debugForm.deliveryBinding.accountId = value;
+      this.debugForm.deliveryBinding.accountLabel = this.findOptionLabel(
+        this.deliveryAccountOptions,
+        value,
+        this.debugForm.deliveryBinding.accountLabel || value
+      );
+    },
+    handleDeliveryTargetChange(value) {
+      this.debugForm.deliveryBinding.target = value;
+      this.debugForm.deliveryBinding.targetLabel = this.findOptionLabel(
+        this.deliveryTargetOptions,
+        value,
+        this.debugForm.deliveryBinding.targetLabel || value
+      );
+    },
+    handleDeliveryThreadIdChange(value) {
+      this.debugForm.deliveryBinding.threadId = value;
+    },
+    syncDeliveryBindingLabels() {
+      const deliveryBinding = this.debugForm.deliveryBinding || {};
+      if (deliveryBinding.accountId) {
+        deliveryBinding.accountLabel = this.findOptionLabel(
+          this.deliveryAccountOptions,
+          deliveryBinding.accountId,
+          deliveryBinding.accountLabel || deliveryBinding.accountId
+        );
+      }
+      if (deliveryBinding.target) {
+        deliveryBinding.targetLabel = this.findOptionLabel(
+          this.deliveryTargetOptions,
+          deliveryBinding.target,
+          deliveryBinding.targetLabel || deliveryBinding.target
+        );
+      }
     },
     handlePushToDeviceChange(value) {
       this.debugForm.pushToDevice = this.hasActiveConnection && Boolean(value);
@@ -624,9 +761,14 @@ export default {
       this.debugForm.agentName = item.agentName || item.agentId || "";
       this.debugForm.pushToDevice = Boolean(item.pushToDevice);
       this.debugForm.browserAudio = item.browserAudio !== false;
+      this.debugForm.deliveryBinding = {
+        ...createEmptyDeliveryBinding(),
+        ...((item && item.deliveryBinding) || {}),
+      };
       this.syncDebugBridge();
       this.syncDebugConnection();
       this.syncDebugAgent();
+      this.syncDeliveryBindingLabels();
       this.debugForm.debugSessionId = item.sessionId;
       this.debugMessages = sanitizeDebugMessages(item.messages);
       this.debugStatusEvents = sanitizeDebugStatuses(item.statusEvents);
@@ -706,6 +848,17 @@ export default {
         return;
       }
       const text = this.debugForm.inputText.trim();
+      const deliveryBinding = this.debugForm.deliveryBinding || {};
+      if (deliveryBinding.enabled) {
+        if (!deliveryBinding.deliveryChannel) {
+          this.$message.warning("启用详细稿投递后，必须选择投递渠道");
+          return;
+        }
+        if (!deliveryBinding.target) {
+          this.$message.warning("启用详细稿投递后，必须选择或填写 IM 目标");
+          return;
+        }
+      }
       const payload = {
           account: this.debugForm.account,
           bridgeId: this.debugForm.bridgeId,
@@ -717,6 +870,18 @@ export default {
           speaker: this.debugForm.speaker,
           pushToDevice: this.debugForm.pushToDevice,
           browserAudio: this.debugForm.browserAudio,
+          deliveryBinding: deliveryBinding.enabled ? {
+            enabled: true,
+            deliveryChannel: deliveryBinding.deliveryChannel,
+            accountId: deliveryBinding.accountId,
+            accountLabel: deliveryBinding.accountLabel,
+            target: deliveryBinding.target,
+            targetLabel: deliveryBinding.targetLabel,
+            threadId: deliveryBinding.threadId,
+            format: deliveryBinding.format || "text",
+          } : {
+            enabled: false,
+          },
           text,
         };
       const turnId = `turn-${Date.now()}-${this.debugTurnSeed}`;

@@ -21,6 +21,17 @@ export const createDebugSessionId = () => `web-debug-${Date.now()}`;
 
 export const buildConnectionKey = (item = {}) => `${item.sessionId || ""}::${item.deviceId || ""}`;
 
+export const createEmptyDeliveryBinding = () => ({
+  enabled: false,
+  deliveryChannel: "",
+  accountId: "",
+  accountLabel: "",
+  target: "",
+  targetLabel: "",
+  threadId: "",
+  format: "text",
+});
+
 export const createEmptyDebugForm = () => ({
   account: "",
   bridgeId: "",
@@ -34,6 +45,7 @@ export const createEmptyDebugForm = () => ({
   browserAudio: true,
   inputText: "",
   debugSessionId: createDebugSessionId(),
+  deliveryBinding: createEmptyDeliveryBinding(),
 });
 
 export const safeParseHistory = (raw) => {
@@ -152,6 +164,10 @@ export const normalizeHistoryEntry = (item = {}) => ({
   agentName: typeof item.agentName === "string" ? item.agentName : "",
   pushToDevice: Boolean(item.pushToDevice),
   browserAudio: item.browserAudio !== false,
+  deliveryBinding: {
+    ...createEmptyDeliveryBinding(),
+    ...(((item && item.deliveryBinding) && typeof item.deliveryBinding === "object") ? item.deliveryBinding : {}),
+  },
   traceNextSeq: Number.isInteger(item.traceNextSeq) ? item.traceNextSeq : 0,
   latestBrowserAudioText: typeof item.latestBrowserAudioText === "string" ? item.latestBrowserAudioText : "",
   updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),

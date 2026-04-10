@@ -67,37 +67,20 @@
 ::v-deep .debug-dialog-fullscreen-toggle.el-button:hover,
 ::v-deep .debug-dialog-fullscreen-toggle.el-button:focus {
   border-color: rgba(134, 164, 210, 0.92);
+  color: #2d4f7c;
   transform: translateY(-1px);
 }
 
-.debug-dialog-fullscreen-icon {
-  position: relative;
-  display: inline-flex;
-  width: 14px;
-  height: 14px;
+.debug-dialog-fullscreen-glyph {
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.debug-dialog-fullscreen-icon::before,
-.debug-dialog-fullscreen-icon::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 2px solid #3f5f86;
-  border-radius: 4px;
-  transition: transform 0.18s ease, opacity 0.18s ease;
-}
-
-.debug-dialog-fullscreen-icon::after {
-  transform: scale(0.58);
-  opacity: 0;
-}
-
-.debug-dialog-fullscreen-icon.is-active::before {
-  transform: scale(0.76);
-}
-
-.debug-dialog-fullscreen-icon.is-active::after {
-  opacity: 1;
+::v-deep .debug-dialog-fullscreen-toggle.el-button.is-active {
+  border-color: rgba(74, 123, 212, 0.3);
+  background: linear-gradient(135deg, #edf4ff 0%, #e3edff 100%);
+  color: #2f63c9;
+  box-shadow: 0 10px 20px rgba(47, 99, 201, 0.12);
 }
 
 ::v-deep .openclaw-debug-dialog .el-dialog__headerbtn {

@@ -5,8 +5,8 @@
         <span class="toolbar-chip toolbar-chip-strong">{{ channelName }}</span>
         <span class="toolbar-chip">{{ currentRuntimeLabel }}</span>
         <span class="toolbar-chip">{{ agentLabel || "未选择 Agent" }}</span>
-        <span class="toolbar-chip" :class="{ offline: !debugReady }">
-          {{ debugReady ? "调试就绪" : (hasAvailableBridge ? "等待连接" : "等待 Bridge") }}
+        <span v-if="!debugReady" class="toolbar-chip offline">
+          {{ hasAvailableBridge ? "等待连接" : "等待 Bridge" }}
         </span>
         <span class="toolbar-chip subtle">在线服务 {{ connectedBridgeCount }}</span>
         <span v-if="connectionCount > 0" class="toolbar-chip subtle">在线设备 {{ connectionCount }}</span>

@@ -13,11 +13,12 @@
           size="mini"
           plain
           class="debug-dialog-fullscreen-toggle"
+          :class="{ 'is-active': isFullscreen }"
           :title="isFullscreen ? '退出全屏' : '进入全屏'"
           :aria-label="isFullscreen ? '退出全屏' : '进入全屏'"
           @click.stop="toggleFullscreen"
         >
-          <span class="debug-dialog-fullscreen-icon" :class="{ 'is-active': isFullscreen }" aria-hidden="true"></span>
+          <i class="el-icon-full-screen debug-dialog-fullscreen-glyph" aria-hidden="true"></i>
         </el-button>
       </div>
     </template>

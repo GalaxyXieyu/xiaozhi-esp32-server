@@ -13,9 +13,11 @@
           size="mini"
           plain
           class="debug-dialog-fullscreen-toggle"
+          :title="isFullscreen ? '退出全屏' : '进入全屏'"
+          :aria-label="isFullscreen ? '退出全屏' : '进入全屏'"
           @click.stop="toggleFullscreen"
         >
-          {{ isFullscreen ? "退出全屏" : "全屏模式" }}
+          <span class="debug-dialog-fullscreen-icon" :class="{ 'is-active': isFullscreen }" aria-hidden="true"></span>
         </el-button>
       </div>
     </template>
@@ -143,7 +145,7 @@ export default {
       return this.channel && this.channel.name ? this.channel.name : "未选择 Channel";
     },
     dialogTitle() {
-      return `OpenClaw 在线调试${this.channelId ? ` · ${this.channelName}` : ""}`;
+      return "OpenClaw 调试";
     },
     dialogWidth() {
       return this.isFullscreen ? "calc(100vw - 12px)" : "86%";

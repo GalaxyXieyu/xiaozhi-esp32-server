@@ -1,16 +1,28 @@
 <template>
   <section class="modern-stage">
     <header class="modern-header">
-      <div class="modern-header-main">
-        <div class="modern-title-row">
-          <h3 class="modern-title">{{ channelName }}</h3>
-          <span class="modern-status" :class="{ offline: !debugReady }">
-            {{ debugReady ? "调试就绪" : (hasAvailableBridge ? "等待连接" : "等待 Bridge") }}
-          </span>
-        </div>
-        <p class="modern-summary">{{ currentRuntimeLabel }} · {{ agentLabel || "未选择 Agent" }}</p>
+      <div class="modern-toolbar-meta">
+        <span class="toolbar-chip toolbar-chip-strong">{{ channelName }}</span>
+        <span class="toolbar-chip">{{ currentRuntimeLabel }}</span>
+        <span class="toolbar-chip">{{ agentLabel || "未选择 Agent" }}</span>
+        <span class="toolbar-chip" :class="{ offline: !debugReady }">
+          {{ debugReady ? "调试就绪" : (hasAvailableBridge ? "等待连接" : "等待 Bridge") }}
+        </span>
+        <span class="toolbar-chip subtle">在线服务 {{ connectedBridgeCount }}</span>
+        <span v-if="connectionCount > 0" class="toolbar-chip subtle">在线设备 {{ connectionCount }}</span>
+        <span v-else-if="connectionsLoading" class="toolbar-chip subtle">设备同步中</span>
+        <span v-else class="toolbar-chip subtle">暂无在线设备</span>
       </div>
       <div class="modern-header-actions">
+        <el-button
+          v-if="latestAssistantText"
+          size="small"
+          type="text"
+          class="topbar-action toolbar-action"
+          @click="playLatestMessage"
+        >
+          播放最新回复
+        </el-button>
         <el-button size="small" plain @click="$emit('create-session')">新会话</el-button>
         <el-button
           size="small"
@@ -66,26 +78,6 @@
 
       <div class="conversation-panel">
         <div class="conversation-shell">
-          <div class="conversation-topbar">
-            <div class="conversation-badges">
-              <span class="topbar-chip primary">{{ agentLabel || "未选择 Agent" }}</span>
-              <span class="topbar-chip subtle">{{ currentRuntimeLabel }}</span>
-              <span class="topbar-chip subtle">在线服务 {{ connectedBridgeCount }} 个</span>
-              <span v-if="connectionCount > 0" class="topbar-chip subtle">在线设备 {{ connectionCount }} 台</span>
-              <span v-else-if="connectionsLoading" class="topbar-chip subtle muted">在线设备同步中</span>
-              <span v-else class="topbar-chip subtle muted">暂无在线设备</span>
-            </div>
-            <el-button
-              v-if="latestAssistantText"
-              size="mini"
-              type="text"
-              class="topbar-action"
-              @click="playLatestMessage"
-            >
-              播放最新回复
-            </el-button>
-          </div>
-
           <div v-if="activeStatusEvent" class="conversation-status-bar">
             <span class="conversation-status-dot" :class="statusToneClass(activeStatusEvent.tone)"></span>
             <span class="conversation-status-text">{{ activeStatusEvent.text }}</span>

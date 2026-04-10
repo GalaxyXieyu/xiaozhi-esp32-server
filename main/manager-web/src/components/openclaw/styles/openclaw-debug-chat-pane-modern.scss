@@ -31,75 +31,73 @@
 .modern-header {
   display: flex;
   justify-content: space-between;
-  gap: 14px;
-  align-items: flex-start;
-  padding: 4px 8px 16px;
+  gap: 12px;
+  align-items: center;
+  padding: 0 4px 10px;
   position: relative;
   z-index: 1;
+  border-bottom: 1px solid rgba(225, 232, 243, 0.84);
 }
 
-.modern-header-main {
+.modern-toolbar-meta {
   min-width: 0;
-}
-
-.modern-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.modern-title {
-  margin: 0;
-  font-size: 20px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.modern-status {
+.toolbar-chip {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
+  min-height: 30px;
+  padding: 5px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(77, 165, 118, 0.18);
-  background: linear-gradient(180deg, #eff9f2 0%, #e2f3e8 100%);
-  color: #207349;
-  font-size: 11px;
-  font-weight: 700;
+  border: 1px solid rgba(214, 223, 236, 0.96);
+  background: rgba(255, 255, 255, 0.76);
+  color: #405874;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.02em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
-.modern-status.offline {
+.toolbar-chip-strong {
+  border-color: rgba(29, 62, 108, 0.12);
+  background: linear-gradient(135deg, #183557 0%, #27476e 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(24, 53, 87, 0.12);
+}
+
+.toolbar-chip.subtle {
+  color: #6a7e99;
+  background: rgba(247, 250, 254, 0.86);
+}
+
+.toolbar-chip.offline {
   border-color: rgba(221, 172, 83, 0.18);
   background: linear-gradient(180deg, #fff7ea 0%, #feeccc 100%);
   color: #b06a17;
-}
-
-.modern-summary {
-  margin: 6px 0 0;
-  color: var(--oc-ink-soft);
-  font-size: 13px;
-  letter-spacing: 0.01em;
 }
 
 .modern-header-actions {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .modern-header-actions ::v-deep .el-button {
-  min-width: 76px;
-  height: 34px;
-  padding: 0 14px;
+  min-width: 72px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 12px;
   border-color: rgba(206, 217, 233, 0.98);
   background: rgba(255, 255, 255, 0.84);
   color: #35506f;
   font-weight: 600;
-  box-shadow: 0 8px 20px rgba(25, 48, 78, 0.06);
+  box-shadow: 0 8px 18px rgba(25, 48, 78, 0.05);
 }
 
 .modern-header-actions ::v-deep .el-button--warning.is-plain {
@@ -113,6 +111,15 @@
   transform: translateY(-1px);
   border-color: rgba(134, 164, 210, 0.92);
   color: #25496f;
+}
+
+.toolbar-action {
+  min-width: auto !important;
+  padding: 0 4px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #3f6fd8 !important;
 }
 
 .modern-layout {
@@ -443,48 +450,6 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.84),
     var(--oc-shadow-soft);
-}
-
-.conversation-topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.conversation-badges {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.topbar-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid transparent;
-}
-
-.topbar-chip.primary {
-  background: linear-gradient(180deg, #1a3651 0%, #16304a 100%);
-  color: #ffffff;
-  box-shadow: 0 8px 18px rgba(23, 49, 75, 0.16);
-}
-
-.topbar-chip.subtle {
-  border-color: rgba(212, 223, 239, 0.98);
-  background: linear-gradient(180deg, #f9fbff 0%, #eef4fd 100%);
-  color: #4e627d;
-}
-
-.topbar-chip.muted {
-  border-color: rgba(228, 234, 242, 0.98);
-  background: linear-gradient(180deg, #fbfcfd 0%, #f4f6fa 100%);
-  color: #8393aa;
 }
 
 .topbar-action {
@@ -870,6 +835,7 @@
   .modern-header,
   .composer-footer {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .modern-layout {
@@ -890,6 +856,10 @@
   .composer-controls {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .modern-header-actions {
+    justify-content: flex-start;
   }
 
   .control-field,

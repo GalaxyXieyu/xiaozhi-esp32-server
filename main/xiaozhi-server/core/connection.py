@@ -37,7 +37,11 @@ from core.auth import AuthenticationError
 from config.config_loader import get_private_config_from_api
 from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
 from config.logger import setup_logging, build_module_string, create_connection_logger
-from config.manage_api_client import DeviceNotFoundException, DeviceBindException
+from config.manage_api_client import (
+    DeviceNotFoundException,
+    DeviceBindException,
+)
+from core.debug_timeline import ConnectionDebugTimeline
 from core.openclaw import OpenClawBridgeClient, OpenClawHubSession
 from core.openclaw.spoken_text import extract_spoken_text
 from core.utils.prompt_manager import PromptManager
@@ -136,6 +140,8 @@ class ConnectionHandler:
         # 添加上报线程池
         self.report_queue = queue.Queue()
         self.report_thread = None
+        self.debug_event_queue = queue.Queue()
+        self.debug_event_thread = None
         # 未来可以通过修改此处，调节asr的上报和tts的上报，目前默认都开启
         self.report_asr_enable = self.read_config_from_api
         self.report_tts_enable = self.read_config_from_api
@@ -185,6 +191,9 @@ class ConnectionHandler:
         self.sentence_id = None
         # 处理TTS响应没有文本返回
         self.tts_MessageText = ""
+        self.current_turn_id = None
+        self.current_response_origin = "unknown"
+        self.debug_last_tts_sentence = {}
 
         # iot相关变量
         self.iot_descriptors = {}
@@ -215,6 +224,58 @@ class ConnectionHandler:
 
         # 初始化提示词管理器
         self.prompt_manager = PromptManager(self.config, self.logger)
+        self.debug_timeline = ConnectionDebugTimeline(self)
+
+    def start_turn(self, trigger: str, user_text: str | None = None):
+        return self.debug_timeline.start_turn(trigger, user_text=user_text)
+
+    def ensure_turn(self, trigger: str = "implicit"):
+        return self.debug_timeline.ensure_turn(trigger)
+
+    def set_response_origin(self, origin: str | None):
+        self.debug_timeline.set_response_origin(origin)
+
+    def get_runtime_account(self) -> str | None:
+        return self.debug_timeline.get_runtime_account()
+
+    def record_debug_event(
+        self,
+        event_source: str,
+        event_type: str,
+        *,
+        direction: str = "internal",
+        origin: str | None = None,
+        summary_text: str | None = None,
+        payload: dict | list | str | None = None,
+        sentence_id: str | None = None,
+        request_id: str | None = None,
+        speaker: str | None = None,
+        runtime_account: str | None = None,
+        status: str = "ok",
+        turn_id: str | None = None,
+        attach_current_turn: bool = True,
+    ):
+        self.debug_timeline.record_event(
+            event_source=event_source,
+            event_type=event_type,
+            direction=direction,
+            origin=origin,
+            summary_text=summary_text,
+            payload=payload,
+            sentence_id=sentence_id,
+            request_id=request_id,
+            speaker=speaker,
+            runtime_account=runtime_account,
+            status=status,
+            turn_id=turn_id,
+            attach_current_turn=attach_current_turn,
+        )
+
+    def _sanitize_debug_payload(self, payload):
+        return self.debug_timeline.sanitize_payload(payload)
+
+    def _trim_debug_string(self, value: str | None, max_length: int = 256):
+        return self.debug_timeline.trim_string(value, max_length=max_length)
 
     async def handle_connection(self, ws: websockets.ServerConnection):
         try:
@@ -230,11 +291,21 @@ class ConnectionHandler:
                 self.client_ip = real_ip.split(",")[0].strip()
             else:
                 self.client_ip = ws.remote_address[0]
+            self.device_id = self.headers.get("device-id", None)
             self.logger.bind(tag=TAG).info(
                 f"{self.client_ip} conn - Headers: {self.headers}"
             )
-
-            self.device_id = self.headers.get("device-id", None)
+            self.record_debug_event(
+                event_source="system",
+                event_type="session_connected",
+                direction="internal",
+                summary_text=f"设备连接建立: {self.device_id or self.headers.get('device-id', 'unknown')}",
+                payload={
+                    "clientIp": self.client_ip,
+                    "headers": self._sanitize_debug_payload(self.headers),
+                },
+                attach_current_turn=False,
+            )
             self._apply_runtime_voice_interrupt_override()
 
             # 认证通过,继续处理
@@ -566,6 +637,12 @@ class ConnectionHandler:
 
     def _init_report_threads(self):
         """初始化ASR和TTS上报线程"""
+        if self.debug_event_thread is None or not self.debug_event_thread.is_alive():
+            self.debug_event_thread = threading.Thread(
+                target=self._debug_event_worker, daemon=True
+            )
+            self.debug_event_thread.start()
+
         if not self.read_config_from_api or self.need_bind:
             return
         if self.chat_history_conf == 0:
@@ -882,6 +959,19 @@ class ConnectionHandler:
         hub_config = self.config.get("openclaw_hub", {}) or {}
         if hub_config.get("enabled", False) and getattr(self.server, "openclaw_hub", None):
             self.openclaw_bridge = OpenClawHubSession(self)
+            self.record_debug_event(
+                event_source="openclaw",
+                event_type="relay_initialized",
+                direction="internal",
+                origin="openclaw",
+                summary_text="OpenClaw relay 已初始化(hub)",
+                payload={
+                    "mode": "hub",
+                    "account": hub_config.get("default_account", "default"),
+                    "relayChat": bool(hub_config.get("relay_chat", False)),
+                },
+                attach_current_turn=False,
+            )
             self.logger.bind(tag=TAG).info(
                 "OpenClaw relay 已初始化: mode=hub, "
                 f"account={hub_config.get('default_account', 'default')}, "
@@ -894,6 +984,19 @@ class ConnectionHandler:
             return
 
         self.openclaw_bridge = OpenClawBridgeClient(self)
+        self.record_debug_event(
+            event_source="openclaw",
+            event_type="relay_initialized",
+            direction="internal",
+            origin="openclaw",
+            summary_text="OpenClaw relay 已初始化(bridge)",
+            payload={
+                "mode": "bridge",
+                "account": bridge_config.get("account", "default"),
+                "relayChat": bool(bridge_config.get("relay_chat", False)),
+            },
+            attach_current_turn=False,
+        )
         self.logger.bind(tag=TAG).info(
             "OpenClaw relay 已初始化: mode=bridge, "
             f"account={bridge_config.get('account', 'default')}, "
@@ -919,6 +1022,19 @@ class ConnectionHandler:
             return False
 
         try:
+            self.ensure_turn("openclaw_relay")
+            self.record_debug_event(
+                event_source="openclaw",
+                event_type="chat_relay_requested",
+                direction="outbound",
+                origin="openclaw",
+                summary_text=f"OpenClaw relay 请求: {self._trim_debug_string(query, 120)}",
+                payload={
+                    "bridge": bridge_type,
+                    "deviceId": self.device_id,
+                    "queryLength": len(query or ""),
+                },
+            )
             self.logger.bind(tag=TAG).info(
                 "OpenClaw relay 开始: "
                 f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
@@ -929,8 +1045,25 @@ class ConnectionHandler:
                 f"connected={connected}, bridge={bridge_type}, "
                 f"device={self.device_id}, session={self.session_id}"
             )
+            self.record_debug_event(
+                event_source="openclaw",
+                event_type="relay_connect_result",
+                direction="internal",
+                origin="openclaw",
+                summary_text=f"OpenClaw relay 连接结果: {connected}",
+                payload={"bridge": bridge_type, "connected": connected},
+            )
             if not connected:
                 if bridge.fallback_to_local_on_error():
+                    self.record_debug_event(
+                        event_source="openclaw",
+                        event_type="relay_fallback_local",
+                        direction="internal",
+                        origin="openclaw",
+                        summary_text="OpenClaw relay 连接失败，回退本地回复",
+                        payload={"bridge": bridge_type, "reason": "connect_failed"},
+                        status="fallback",
+                    )
                     self.logger.bind(tag=TAG).warning(
                         "OpenClaw relay 回退本地: connect=False, "
                         f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
@@ -948,16 +1081,47 @@ class ConnectionHandler:
             response_text = self._extract_openclaw_response_text(result)
             if not response_text:
                 raise RuntimeError("OpenClaw bridge 没有返回可播报文本")
+            self.set_response_origin("openclaw")
+            self.record_debug_event(
+                event_source="openclaw",
+                event_type="chat_result",
+                direction="inbound",
+                origin="openclaw",
+                summary_text=f"OpenClaw 返回: {self._trim_debug_string(response_text, 120)}",
+                payload={
+                    "bridge": bridge_type,
+                    "resultType": type(result).__name__,
+                    "textLength": len(response_text),
+                },
+            )
 
             from core.handle.intentHandler import speak_txt
 
             self.sentence_id = str(uuid.uuid4().hex)
             self.dialogue.put(Message(role="user", content=query))
-            speak_txt(self, response_text)
+            speak_txt(self, response_text, origin="openclaw")
             return True
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"OpenClaw bridge 转发失败: {e}")
+            self.record_debug_event(
+                event_source="openclaw",
+                event_type="relay_error",
+                direction="internal",
+                origin="openclaw",
+                summary_text=f"OpenClaw relay 失败: {self._trim_debug_string(str(e), 160)}",
+                payload={"bridge": bridge_type},
+                status="error",
+            )
             if bridge and bridge.fallback_to_local_on_error():
+                self.record_debug_event(
+                    event_source="openclaw",
+                    event_type="relay_fallback_local",
+                    direction="internal",
+                    origin="openclaw",
+                    summary_text="OpenClaw relay 异常，回退本地回复",
+                    payload={"bridge": bridge_type, "reason": self._trim_debug_string(str(e), 160)},
+                    status="fallback",
+                )
                 self.logger.bind(tag=TAG).warning(
                     "OpenClaw relay 异常后回退本地: "
                     f"bridge={bridge_type}, device={self.device_id}, session={self.session_id}"
@@ -970,7 +1134,8 @@ class ConnectionHandler:
         from core.handle.intentHandler import speak_txt
 
         self.sentence_id = str(uuid.uuid4().hex)
-        speak_txt(self, get_system_error_response(self.config))
+        self.set_response_origin("system")
+        speak_txt(self, get_system_error_response(self.config), origin="system")
 
     async def _wait_for_push_tts_ready(self, timeout_seconds: float = 8.0):
         if not self.bind_completed_event.is_set():
@@ -1007,6 +1172,17 @@ class ConnectionHandler:
             raise RuntimeError("OpenClaw push 缺少播报文本")
 
         tts = await self._wait_for_push_tts_ready()
+        if not self.current_turn_id:
+            self.start_turn("openclaw_push", user_text=message)
+        self.set_response_origin("openclaw")
+        self.record_debug_event(
+            event_source="openclaw",
+            event_type="push_text_received",
+            direction="inbound",
+            origin="openclaw",
+            summary_text=f"OpenClaw 主动推送: {self._trim_debug_string(message, 120)}",
+            payload={"textLength": len(message)},
+        )
 
         self.logger.bind(tag=TAG).info(
             "OpenClaw 主动推送播报: "
@@ -1452,6 +1628,15 @@ class ConnectionHandler:
         if len(response_message) > 0:
             text_buff = "".join(response_message)
             self.tts_MessageText = text_buff
+            self.set_response_origin("local_agent")
+            self.record_debug_event(
+                event_source="llm",
+                event_type="text_response_generated",
+                direction="internal",
+                origin="local_agent",
+                summary_text=f"LLM 回复: {self._trim_debug_string(text_buff, 160)}",
+                payload={"depth": depth, "textLength": len(text_buff)},
+            )
             self.dialogue.put(Message(role="assistant", content=text_buff))
 
             # 更新工具调用统计：如果没有调用工具，增加计数
@@ -1560,6 +1745,9 @@ class ConnectionHandler:
 
             self.chat(None, depth=depth + 1)
 
+    def _debug_event_worker(self):
+        self.debug_timeline.run_worker(TAG)
+
     def _report_worker(self):
         """聊天记录上报工作线程"""
         while not self.stop_event.is_set():
@@ -1596,11 +1784,27 @@ class ConnectionHandler:
 
     def clearSpeakStatus(self):
         self.client_is_speaking = False
+        self.record_debug_event(
+            event_source="system",
+            event_type="speak_status_cleared",
+            direction="internal",
+            origin="system",
+            summary_text="服务端讲话状态已清除",
+        )
         self.logger.bind(tag=TAG).debug(f"清除服务端讲话状态")
 
     async def close(self, ws=None):
         """资源清理方法"""
         try:
+            self.record_debug_event(
+                event_source="system",
+                event_type="session_closed",
+                direction="internal",
+                origin="system",
+                summary_text="连接关闭",
+                payload={"deviceId": self.device_id, "clientIp": self.client_ip},
+                attach_current_turn=False,
+            )
             connection_registry = getattr(self.server, "connection_registry", None)
             if connection_registry is not None:
                 await connection_registry.unregister(self)
@@ -1711,8 +1915,21 @@ class ConnectionHandler:
     def clear_queues(self):
         """清空所有任务队列"""
         if self.tts:
+            text_queue_size = self.tts.tts_text_queue.qsize()
+            audio_queue_size = self.tts.tts_audio_queue.qsize()
             self.logger.bind(tag=TAG).debug(
-                f"开始清理: TTS队列大小={self.tts.tts_text_queue.qsize()}, 音频队列大小={self.tts.tts_audio_queue.qsize()}"
+                f"开始清理: TTS队列大小={text_queue_size}, 音频队列大小={audio_queue_size}"
+            )
+            self.record_debug_event(
+                event_source="system",
+                event_type="queue_cleared",
+                direction="internal",
+                origin="system",
+                summary_text="清理 TTS 和上报队列",
+                payload={
+                    "ttsQueueSize": text_queue_size,
+                    "audioQueueSize": audio_queue_size,
+                },
             )
 
             # 使用非阻塞方式清空队列

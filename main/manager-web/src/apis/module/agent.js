@@ -153,6 +153,69 @@ export default {
                 });
             }).send();
     },
+    getDebugSessions(agentId, params, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/agent/debug-timeline/${agentId}/sessions`)
+            .method('GET')
+            .data(params)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getDebugSessions(agentId, params, callback, failCallback);
+                });
+            }).send();
+    },
+    getDebugTimeline(agentId, sessionId, params, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/agent/debug-timeline/${agentId}/${sessionId}`)
+            .method('GET')
+            .data(params)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getDebugTimeline(agentId, sessionId, params, callback, failCallback);
+                });
+            }).send();
+    },
+    getDebugSummary(agentId, sessionId, params, callback, failCallback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/agent/debug-timeline/${agentId}/${sessionId}/summary`)
+            .method('GET')
+            .data(params)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .fail((err) => {
+                RequestService.clearRequestTime();
+                if (failCallback) {
+                    failCallback(err);
+                }
+            })
+            .networkFail(() => {
+                RequestService.reAjaxFun(() => {
+                    this.getDebugSummary(agentId, sessionId, params, callback, failCallback);
+                });
+            }).send();
+    },
     // 获取音频下载ID
     getAudioId(audioId, callback) {
         RequestService.sendRequest()

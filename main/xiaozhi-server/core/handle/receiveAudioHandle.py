@@ -27,6 +27,7 @@ async def handleAudioMessage(conn: "ConnectionHandler", audio):
     # manual 模式下不打断正在播放的内容
     if have_voice:
         if conn.client_is_speaking and conn.client_listen_mode != "manual":
+            conn.start_turn("voice_interrupt")
             if is_voice_interrupt_enabled(conn):
                 await handleAbortMessage(conn)
             else:
@@ -75,6 +76,20 @@ async def startToChat(conn: "ConnectionHandler", text):
         conn.current_speaker = speaker_name
     else:
         conn.current_speaker = None
+
+    conn.start_turn("device_text", user_text=actual_text)
+    conn.record_debug_event(
+        event_source="device",
+        event_type="text_input",
+        direction="inbound",
+        origin="unknown",
+        summary_text=f"设备文本输入: {actual_text}",
+        payload={
+            "speaker": speaker_name,
+            "language": language_tag,
+            "textLength": len(actual_text or ""),
+        },
+    )
 
     if conn.need_bind:
         await check_bind_device(conn)

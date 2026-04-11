@@ -17,6 +17,121 @@ AUDIO_FRAME_DURATION = 60
 PRE_BUFFER_COUNT = 5
 
 
+def _audio_packet_stats(audios):
+    if audios is None:
+        return 0, 0
+    if isinstance(audios, bytes):
+        return 1, len(audios)
+
+    packet_count = 0
+    byte_count = 0
+    for packet in audios:
+        if isinstance(packet, bytes):
+            packet_count += 1
+            byte_count += len(packet)
+    return packet_count, byte_count
+
+
+def _record_duplicate_sentence(conn: "ConnectionHandler", text: str | None):
+    normalized_text = conn._trim_debug_string(text, 160)
+    if not normalized_text:
+        return
+
+    turn_id = conn.current_turn_id or ""
+    origin = conn.current_response_origin or "unknown"
+    last_sentence = getattr(conn, "debug_last_tts_sentence", None) or {}
+
+    if (
+        last_sentence.get("turnId") == turn_id
+        and last_sentence.get("origin") == origin
+        and last_sentence.get("text") == normalized_text
+    ):
+        conn.record_debug_event(
+            event_source="system",
+            event_type="duplicate_sentence_detected",
+            direction="internal",
+            origin=origin,
+            summary_text=f"检测到连续重复播报: {normalized_text}",
+            payload={
+                "textPreview": normalized_text,
+                "sentenceId": conn.sentence_id,
+                "turnId": turn_id,
+            },
+        )
+
+    conn.debug_last_tts_sentence = {
+        "turnId": turn_id,
+        "origin": origin,
+        "text": normalized_text,
+    }
+
+
+def _record_tts_state_event(
+    conn: "ConnectionHandler",
+    state: str,
+    text: str | None = None,
+    *,
+    extra_payload: dict | None = None,
+):
+    event_type_map = {
+        "start": "tts_start_sent",
+        "stop": "tts_stop_sent",
+        "sentence_start": "tts_sentence_start_sent",
+    }
+    event_type = event_type_map.get(state, f"tts_{state}_sent")
+    summary_map = {
+        "start": "通知设备开始播放",
+        "stop": "通知设备停止播放",
+        "sentence_start": f"发送句子字幕: {conn._trim_debug_string(text, 120)}",
+    }
+    payload = {
+        "state": state,
+        "textLength": len(text or ""),
+    }
+    if text:
+        payload["textPreview"] = conn._trim_debug_string(text, 160)
+    if extra_payload:
+        payload.update(extra_payload)
+
+    if state == "sentence_start":
+        _record_duplicate_sentence(conn, text)
+
+    conn.record_debug_event(
+        event_source="tts",
+        event_type=event_type,
+        direction="outbound",
+        origin=conn.current_response_origin,
+        summary_text=summary_map.get(state, f"发送 TTS 状态: {state}"),
+        payload=payload,
+        sentence_id=conn.sentence_id,
+    )
+
+
+def _record_audio_out_event(
+    conn: "ConnectionHandler",
+    sentence_type,
+    audios,
+):
+    packet_count, byte_count = _audio_packet_stats(audios)
+    if packet_count <= 0 and byte_count <= 0:
+        return
+
+    conn.record_debug_event(
+        event_source="tts",
+        event_type="tts_audio_out",
+        direction="outbound",
+        origin=conn.current_response_origin,
+        summary_text=f"发送语音音频: {packet_count} 包, {byte_count} 字节",
+        payload={
+            "packetCount": packet_count,
+            "byteCount": byte_count,
+            "sentenceType": getattr(sentence_type, "value", str(sentence_type)),
+            "sentenceId": conn.sentence_id,
+        },
+        sentence_id=conn.sentence_id,
+    )
+
+
 async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text):
     if conn.tts.tts_audio_first_sentence:
         conn.logger.bind(tag=TAG).info(f"发送第一段语音: {text}")
@@ -38,6 +153,7 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
             await send_tts_message(conn, "sentence_start", text)
 
     await sendAudio(conn, audios)
+    _record_audio_out_event(conn, sentenceType, audios)
     # 发送句子开始消息
     if sentenceType is not SentenceType.MIDDLE:
         conn.logger.bind(tag=TAG).info(f"发送音频消息: {sentenceType}, {text}")
@@ -286,6 +402,7 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
         # 清除服务端讲话状态
         conn.clearSpeakStatus()
 
+    _record_tts_state_event(conn, state, text)
     # 发送消息到客户端
     await conn.websocket.send(json.dumps(message))
 
@@ -313,6 +430,19 @@ async def send_stt_message(conn: "ConnectionHandler", text):
         # 如果不是JSON格式，直接使用原始文本
         display_text = text
     stt_text = textUtils.get_string_no_punctuation_or_emoji(display_text)
+    conn.record_debug_event(
+        event_source="server",
+        event_type="stt_message_sent",
+        direction="outbound",
+        origin="unknown",
+        summary_text=f"发送识别字幕: {conn._trim_debug_string(stt_text, 120)}",
+        payload={
+            "rawTextLength": len(text or ""),
+            "displayTextLength": len(display_text or ""),
+            "sttTextLength": len(stt_text or ""),
+            "speaker": conn.current_speaker,
+        },
+    )
     await conn.websocket.send(
         json.dumps({"type": "stt", "text": stt_text, "session_id": conn.session_id})
     )
@@ -323,6 +453,14 @@ async def send_stt_message(conn: "ConnectionHandler", text):
 
 async def send_display_message(conn: "ConnectionHandler", text):
     """发送纯显示消息"""
+    conn.record_debug_event(
+        event_source="server",
+        event_type="display_message_sent",
+        direction="outbound",
+        origin="unknown",
+        summary_text=f"发送显示消息: {conn._trim_debug_string(text, 120)}",
+        payload={"textLength": len(text or "")},
+    )
     message = {
         "type": "stt",
         "text": text,

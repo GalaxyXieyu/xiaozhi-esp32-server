@@ -221,6 +221,21 @@ async def report(
         return None
 
 
+async def report_debug_event(event_data: Dict) -> Optional[Dict]:
+    """异步调试事件上报"""
+    if not event_data or not ManageApiClient._instance:
+        return None
+    try:
+        return await ManageApiClient._instance._execute_async_request(
+            "POST",
+            "/agent/debug-timeline/report",
+            json=event_data,
+        )
+    except Exception as e:
+        print(f"调试事件上报失败: {e}")
+        return None
+
+
 def init_service(config):
     ManageApiClient(config)
 

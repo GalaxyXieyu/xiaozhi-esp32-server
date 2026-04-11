@@ -31,6 +31,9 @@
       <div class="settings-btn" @click="handleDeviceManage">
         {{ $t('home.deviceManagement') }}({{ device.deviceCount }})
       </div>
+      <div class="settings-btn" @click="handleDebugTimeline">
+        调试时间线
+      </div>
       <div :class="['settings-btn', { 'disabled-btn': device.memModelId === 'Memory_nomem' }]"
         @click="handleChatHistory">
         <el-tooltip effect="light" v-if="device.memModelId === 'Memory_nomem'" :content="$t('home.enableMemory')" placement="top">
@@ -112,6 +115,9 @@ export default {
         return
       }
       this.$emit('chat-history', { agentId: this.device.agentId, agentName: this.device.agentName })
+    },
+    handleDebugTimeline() {
+      this.$emit('debug-timeline', { agentId: this.device.agentId, agentName: this.device.agentName })
     }
   },
 }

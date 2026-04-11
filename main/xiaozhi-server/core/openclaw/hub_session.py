@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Optional
 
 from config.logger import setup_logging
@@ -28,6 +29,11 @@ class OpenClawHubSession:
     async def connect(self) -> bool:
         if not self.enabled:
             self.logger.bind(tag=TAG).warning("OpenClaw hub session 未启用，跳过 relay")
+            self._record_event(
+                "hub_connect_skipped",
+                summary_text="OpenClaw hub session 未启用，跳过 relay",
+                status="error",
+            )
             return False
         params = self._build_peer_context()
         available = await self.hub.has_available_bridge(
@@ -38,6 +44,16 @@ class OpenClawHubSession:
             "OpenClaw hub 可用性检查: "
             f"available={available}, account={params['account']}, "
             f"peer={params['peerId']}, bridge={self._resolve_bridge_id() or 'default'}"
+        )
+        self._record_event(
+            "hub_availability_checked",
+            summary_text=f"OpenClaw hub 可用性检查: {available}",
+            payload={
+                "available": available,
+                "bridgeId": self._resolve_bridge_id(),
+                "params": params,
+            },
+            status="ok" if available else "error",
         )
         return available
 
@@ -50,11 +66,9 @@ class OpenClawHubSession:
             return
 
         try:
-            await self.hub.request(
+            await self._request(
                 self.config.get("session_ended_method", "xiaozhi.sessionEnded"),
                 self._build_peer_context(),
-                bridge_id=self._resolve_bridge_id(),
-                account=self._resolve_account(),
             )
         except Exception as e:
             self.logger.bind(tag=TAG).warning(f"OpenClaw sessionEnded 调用失败: {e}")
@@ -72,11 +86,9 @@ class OpenClawHubSession:
             f"account={params['account']}, peer={params['peerId']}, "
             f"bridge={self._resolve_bridge_id() or 'default'}, method={self.config.get('chat_method', 'xiaozhi.chat')}"
         )
-        return await self.hub.request(
+        return await self._request(
             self.config.get("chat_method", "xiaozhi.chat"),
             params,
-            bridge_id=self._resolve_bridge_id(),
-            account=self._resolve_account(),
         )
 
     async def bind_peer_agent(
@@ -98,11 +110,9 @@ class OpenClawHubSession:
             f"bridge={self._resolve_bridge_id() or 'default'}"
         )
 
-        result = await self.hub.request(
+        result = await self._request(
             self.config.get("bind_method", "xiaozhi.bindPeerAgent"),
             params,
-            bridge_id=self._resolve_bridge_id(),
-            account=self._resolve_account(),
         )
         if isinstance(result, dict):
             return result
@@ -137,13 +147,72 @@ class OpenClawHubSession:
             f"account={params['account']}, peer={params['peerId']}, "
             f"bridge={self._resolve_bridge_id() or 'default'}"
         )
-        await self.hub.request(
+        await self._request(
             self.config.get("session_started_method", "xiaozhi.sessionStarted"),
             params,
-            bridge_id=self._resolve_bridge_id(),
-            account=self._resolve_account(),
         )
         self._session_started = True
+
+    def _record_event(
+        self,
+        event_type: str,
+        *,
+        direction: str = "internal",
+        summary_text: str | None = None,
+        payload: dict | None = None,
+        request_id: str | None = None,
+        status: str = "ok",
+    ):
+        self.conn.record_debug_event(
+            event_source="openclaw",
+            event_type=event_type,
+            direction=direction,
+            origin="openclaw",
+            summary_text=summary_text,
+            payload=payload,
+            request_id=request_id,
+            status=status,
+        )
+
+    async def _request(self, method: str, params: dict[str, Any]):
+        request_id = uuid.uuid4().hex
+        self._record_event(
+            "hub_request_sent",
+            direction="outbound",
+            summary_text=f"OpenClaw hub 请求: {method}",
+            payload={
+                "method": method,
+                "params": params,
+                "bridgeId": self._resolve_bridge_id(),
+                "account": self._resolve_account(),
+            },
+            request_id=request_id,
+        )
+        try:
+            result = await self.hub.request(
+                method,
+                params,
+                bridge_id=self._resolve_bridge_id(),
+                account=self._resolve_account(),
+            )
+            self._record_event(
+                "hub_result_received",
+                direction="inbound",
+                summary_text=f"OpenClaw hub 返回结果: {method}",
+                payload={"method": method, "result": result},
+                request_id=request_id,
+            )
+            return result
+        except Exception as exc:
+            self._record_event(
+                "hub_request_error",
+                direction="internal",
+                summary_text=f"OpenClaw hub 请求失败: {method}",
+                payload={"method": method, "error": str(exc)},
+                request_id=request_id,
+                status="error",
+            )
+            raise
 
     def _get_configured_agent_binding(self) -> dict[str, str] | None:
         binding = self.conn.config.get("openclaw_binding") or {}

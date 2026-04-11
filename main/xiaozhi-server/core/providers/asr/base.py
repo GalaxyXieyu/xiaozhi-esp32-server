@@ -85,6 +85,19 @@ class ASRProviderBase(ABC):
         """并行处理ASR和声纹识别"""
         try:
             total_start_time = time.monotonic()
+            conn.ensure_turn("device_audio")
+            conn.record_debug_event(
+                event_source="device",
+                event_type="audio_input",
+                direction="inbound",
+                origin="unknown",
+                summary_text=f"设备音频输入完成: {len(asr_audio_task)} 帧",
+                payload={
+                    "frameCount": len(asr_audio_task),
+                    "audioFormat": conn.audio_format,
+                    "byteCount": sum(len(frame) for frame in asr_audio_task),
+                },
+            )
 
             # 准备音频数据
             if conn.audio_format == "pcm":
@@ -169,10 +182,30 @@ class ASRProviderBase(ABC):
 
             if text_len > 0:
                 audio_snapshot = asr_audio_task.copy()
+                conn.record_debug_event(
+                    event_source="asr",
+                    event_type="final_result",
+                    direction="internal",
+                    origin="unknown",
+                    summary_text=f"ASR 结果: {enhanced_text}",
+                    payload={
+                        "textLength": len(enhanced_text or ""),
+                        "speaker": speaker_name,
+                    },
+                )
                 enqueue_asr_report(conn, enhanced_text, audio_snapshot)
                 # 使用自定义模块进行上报
                 await startToChat(conn, enhanced_text)
         except Exception as e:
+            conn.record_debug_event(
+                event_source="asr",
+                event_type="processing_error",
+                direction="internal",
+                origin="system",
+                summary_text=f"ASR 处理失败: {e}",
+                payload={"error": str(e)},
+                status="error",
+            )
             logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
             import traceback
 

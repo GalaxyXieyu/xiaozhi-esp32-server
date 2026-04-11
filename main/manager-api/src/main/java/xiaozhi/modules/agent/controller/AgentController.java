@@ -49,6 +49,7 @@ import xiaozhi.modules.agent.service.AgentChatAudioService;
 import xiaozhi.modules.agent.service.AgentChatHistoryService;
 import xiaozhi.modules.agent.service.AgentChatSummaryService;
 import xiaozhi.modules.agent.service.AgentContextProviderService;
+import xiaozhi.modules.agent.service.AgentDebugEventService;
 import xiaozhi.modules.agent.service.AgentPluginMappingService;
 import xiaozhi.modules.agent.service.AgentService;
 import xiaozhi.modules.agent.service.AgentTemplateService;
@@ -72,6 +73,7 @@ public class AgentController {
     private final AgentPluginMappingService agentPluginMappingService;
     private final AgentContextProviderService agentContextProviderService;
     private final AgentChatSummaryService agentChatSummaryService;
+    private final AgentDebugEventService agentDebugEventService;
     private final RedisUtils redisUtils;
     private final AgentTagService agentTagService;
     private final OpenClawConfigService openClawConfigService;
@@ -169,6 +171,8 @@ public class AgentController {
         deviceService.deleteByAgentId(id);
         // 删除关联的聊天记录
         agentChatHistoryService.deleteByAgentId(id, true, true);
+        // 删除关联的调试时间线
+        agentDebugEventService.deleteByAgentId(id);
         // 删除关联的插件
         agentPluginMappingService.deleteByAgentId(id);
         // 删除关联的上下文源配置

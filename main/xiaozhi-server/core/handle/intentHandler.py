@@ -232,9 +232,18 @@ async def process_intent_result(
         return False
 
 
-def speak_txt(conn: "ConnectionHandler", text):
+def speak_txt(conn: "ConnectionHandler", text, origin: str = "local_agent"):
     # 记录文本
     conn.tts_MessageText = text
+    conn.set_response_origin(origin)
+    conn.record_debug_event(
+        event_source="server",
+        event_type="assistant_text_prepared",
+        direction="internal",
+        origin=origin,
+        summary_text=f"准备播报文本: {text}",
+        payload={"textLength": len(text or "")},
+    )
 
     conn.tts.tts_text_queue.put(
         TTSMessageDTO(

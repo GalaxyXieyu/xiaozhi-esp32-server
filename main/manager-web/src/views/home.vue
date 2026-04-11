@@ -41,7 +41,7 @@
           <template v-else>
             <DeviceItem v-for="(item, index) in devices" :key="index" :device="item" :feature-status="featureStatus" 
               @configure="goToRoleConfig" @deviceManage="handleDeviceManage" @delete="handleDeleteAgent" 
-              @chat-history="handleShowChatHistory" />
+              @chat-history="handleShowChatHistory" @debug-timeline="handleShowDebugTimeline" />
           </template>
         </div>
       </div>
@@ -51,6 +51,7 @@
       <version-footer />
     </el-footer>
     <chat-history-dialog :visible.sync="showChatHistory" :agent-id="currentAgentId" :agent-name="currentAgentName" />
+    <debug-timeline-dialog :visible.sync="showDebugTimeline" :agent-id="currentDebugAgentId" :agent-name="currentDebugAgentName" />
   </div>
 
 </template>
@@ -59,6 +60,7 @@
 import Api from '@/apis/api';
 import AddWisdomBodyDialog from '@/components/AddWisdomBodyDialog.vue';
 import ChatHistoryDialog from '@/components/ChatHistoryDialog.vue';
+import DebugTimelineDialog from '@/components/DebugTimelineDialog.vue';
 import DeviceItem from '@/components/DeviceItem.vue';
 import HeaderBar from '@/components/HeaderBar.vue';
 import VersionFooter from '@/components/VersionFooter.vue';
@@ -66,7 +68,7 @@ import featureManager from '@/utils/featureManager';
 
 export default {
   name: 'HomePage',
-  components: { DeviceItem, AddWisdomBodyDialog, HeaderBar, VersionFooter, ChatHistoryDialog },
+  components: { DeviceItem, AddWisdomBodyDialog, HeaderBar, VersionFooter, ChatHistoryDialog, DebugTimelineDialog },
   data() {
     return {
       addDeviceDialogVisible: false,
@@ -77,8 +79,11 @@ export default {
       isLoading: true,
       skeletonCount: localStorage.getItem('skeletonCount') || 8,
       showChatHistory: false,
+      showDebugTimeline: false,
       currentAgentId: '',
       currentAgentName: '',
+      currentDebugAgentId: '',
+      currentDebugAgentName: '',
       // 功能状态
       featureStatus: {
         voiceprintRecognition: false,
@@ -200,6 +205,11 @@ export default {
       this.currentAgentId = agentId;
       this.currentAgentName = agentName;
       this.showChatHistory = true;
+    },
+    handleShowDebugTimeline({ agentId, agentName }) {
+      this.currentDebugAgentId = agentId;
+      this.currentDebugAgentName = agentName;
+      this.showDebugTimeline = true;
     }
   }
 }

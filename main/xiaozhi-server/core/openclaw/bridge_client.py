@@ -49,6 +49,12 @@ class OpenClawBridgeClient:
         url = self._build_url()
         if not url:
             self.logger.bind(tag=TAG).warning("OpenClaw bridge 已启用，但未配置 url")
+            self._record_event(
+                "bridge_connect_skipped",
+                direction="internal",
+                summary_text="OpenClaw bridge 已启用但未配置 URL",
+                status="error",
+            )
             return False
 
         timeout = float(self.config.get("connect_timeout_seconds", 10))
@@ -64,12 +70,25 @@ class OpenClawBridgeClient:
 
             self.listener_task = asyncio.create_task(self._listen())
             await self._notify_session_started()
+            self._record_event(
+                "bridge_connected",
+                direction="internal",
+                summary_text="OpenClaw bridge 连接成功",
+                payload={"url": url},
+            )
             self.logger.bind(tag=TAG).info("OpenClaw bridge 连接成功")
             return True
         except Exception as e:
             async with self.lock:
                 self.ready = False
                 self.websocket = None
+            self._record_event(
+                "bridge_connect_failed",
+                direction="internal",
+                summary_text=f"OpenClaw bridge 连接失败: {e}",
+                payload={"url": url, "error": str(e)},
+                status="error",
+            )
             self.logger.bind(tag=TAG).error(f"OpenClaw bridge 连接失败: {e}")
             return False
 
@@ -103,6 +122,11 @@ class OpenClawBridgeClient:
                 await websocket.close()
             except Exception:
                 pass
+        self._record_event(
+            "bridge_closed",
+            direction="internal",
+            summary_text="OpenClaw bridge 连接关闭",
+        )
 
     async def chat(self, text: str) -> Any:
         await self._ensure_agent_bound()
@@ -149,6 +173,27 @@ class OpenClawBridgeClient:
             f"OpenClaw bridge 自动绑定 agent 完成: agent={agent_id}, result={result}"
         )
 
+    def _record_event(
+        self,
+        event_type: str,
+        *,
+        direction: str = "internal",
+        summary_text: str | None = None,
+        payload: dict | None = None,
+        request_id: int | str | None = None,
+        status: str = "ok",
+    ):
+        self.conn.record_debug_event(
+            event_source="openclaw",
+            event_type=event_type,
+            direction=direction,
+            origin="openclaw",
+            summary_text=summary_text,
+            payload=payload,
+            request_id=str(request_id) if request_id is not None else None,
+            status=status,
+        )
+
     async def call(self, method: str, params: Optional[Dict[str, Any]] = None) -> Any:
         if not method:
             raise RuntimeError("OpenClaw bridge RPC method 未配置")
@@ -175,12 +220,45 @@ class OpenClawBridgeClient:
             raise RuntimeError("OpenClaw bridge websocket 不可用")
 
         try:
+            self._record_event(
+                "rpc_request_sent",
+                direction="outbound",
+                summary_text=f"OpenClaw RPC 请求: {method}",
+                payload={
+                    "method": method,
+                    "params": params or {},
+                },
+                request_id=request_id,
+            )
             await websocket.send(json.dumps(payload, ensure_ascii=False))
             timeout = float(self.config.get("request_timeout_seconds", 60))
             return await asyncio.wait_for(future, timeout=timeout)
-        except Exception:
+        except asyncio.TimeoutError:
             async with self.lock:
                 self.pending_results.pop(request_id, None)
+            self._record_event(
+                "rpc_timeout",
+                direction="internal",
+                summary_text=f"OpenClaw RPC 超时: {method}",
+                payload={"method": method},
+                request_id=request_id,
+                status="timeout",
+            )
+            raise
+        except Exception as exc:
+            async with self.lock:
+                self.pending_results.pop(request_id, None)
+            self._record_event(
+                "rpc_send_error",
+                direction="internal",
+                summary_text=f"OpenClaw RPC 发送失败: {method}",
+                payload={
+                    "method": method,
+                    "error": str(exc),
+                },
+                request_id=request_id,
+                status="error",
+            )
             raise
 
     async def _listen(self):
@@ -198,8 +276,22 @@ class OpenClawBridgeClient:
             self.logger.bind(tag=TAG).warning(
                 f"OpenClaw bridge 连接关闭: code={e.code}, reason={e.reason}"
             )
+            self._record_event(
+                "bridge_disconnected",
+                direction="internal",
+                summary_text=f"OpenClaw bridge 连接断开: {e.code}",
+                payload={"code": e.code, "reason": e.reason},
+                status="error",
+            )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"OpenClaw bridge 监听异常: {e}")
+            self._record_event(
+                "bridge_listen_error",
+                direction="internal",
+                summary_text=f"OpenClaw bridge 监听异常: {e}",
+                payload={"error": str(e)},
+                status="error",
+            )
         finally:
             await self._mark_closed(RuntimeError("OpenClaw bridge 连接已断开"))
 
@@ -218,8 +310,23 @@ class OpenClawBridgeClient:
                     message = error_data.get("message", "未知错误")
                 else:
                     message = str(error_data)
+                self._record_event(
+                    "rpc_error_received",
+                    direction="inbound",
+                    summary_text=f"OpenClaw RPC 返回错误: {message}",
+                    payload={"error": payload["error"]},
+                    request_id=request_id,
+                    status="error",
+                )
                 future.set_exception(RuntimeError(message))
             else:
+                self._record_event(
+                    "rpc_result_received",
+                    direction="inbound",
+                    summary_text="OpenClaw RPC 返回结果",
+                    payload={"result": payload.get("result")},
+                    request_id=request_id,
+                )
                 future.set_result(payload.get("result"))
             return
 
@@ -228,6 +335,15 @@ class OpenClawBridgeClient:
             params = payload.get("params", {})
             self.logger.bind(tag=TAG).debug(
                 f"收到 OpenClaw bridge 通知: {method}, params={params}"
+            )
+            self._record_event(
+                "rpc_notification_received",
+                direction="inbound",
+                summary_text=f"收到 OpenClaw 通知: {method}",
+                payload={
+                    "method": method,
+                    "params": params,
+                },
             )
 
     async def _mark_closed(self, exc: Exception):

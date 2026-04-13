@@ -158,7 +158,7 @@ export default {
     },
     feedbackDescription() {
       if (this.feedbackStatus === "checking") {
-        return "会向当前 Channel 的 inventory 接口拉取最新状态。";
+        return "会向当前 Channel 的探测接口拉取最新状态。";
       }
       const message = this.connectionFeedback && this.connectionFeedback.message
         ? this.connectionFeedback.message

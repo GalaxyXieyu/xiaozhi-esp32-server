@@ -53,7 +53,7 @@
               <el-form-item label="管理接口基础地址">
                 <el-input v-model.trim="localForm.baseUrl" placeholder="留空时恢复为当前服务的本地 OpenClaw 接入地址" />
               </el-form-item>
-              <el-form-item label="Inventory 路径">
+              <el-form-item label="探测路径">
                 <el-input v-model.trim="localForm.inventoryPath" placeholder="/inventory" />
               </el-form-item>
               <el-form-item label="Access Token">

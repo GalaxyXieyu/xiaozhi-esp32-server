@@ -73,7 +73,7 @@
             </div>
 
             <p class="agent-copy">
-              {{ agent.isGhost ? "inventory 里还没看到这个 Agent。" : "从这里直接调试。" }}
+              {{ agent.isGhost ? "当前接入状态里还没看到这个 Agent。" : "从这里直接调试。" }}
             </p>
 
             <div class="agent-actions">
@@ -126,7 +126,7 @@
           <el-button @click="commandDialogVisible = true">接入命令</el-button>
           <el-button plain @click="diagnosticsDialogVisible = true">排障信息</el-button>
           <el-button type="primary" :loading="inventoryLoading" @click="$emit('refresh-inventory')">
-            同步 Inventory
+            刷新状态
           </el-button>
         </div>
       </div>
@@ -156,7 +156,7 @@
       <div class="diagnostics-body dialog-diagnostics">
         <div class="diagnostic-row">
           <span class="diagnostic-key">Source URL</span>
-          <span class="diagnostic-value">{{ inventory.sourceUrl || "尚未同步 inventory" }}</span>
+          <span class="diagnostic-value">{{ inventory.sourceUrl || "尚未获取运行状态" }}</span>
         </div>
         <div class="diagnostic-row">
           <span class="diagnostic-key">连接实例</span>
@@ -317,7 +317,7 @@ export default {
     },
     inventoryNoteText() {
       if (this.inventoryLoading) {
-        return "正在同步 inventory";
+        return "正在刷新状态";
       }
       const connected = this.inventory.connectedBridgeCount || 0;
       if (this.inventory && this.inventory.healthy) {
@@ -326,7 +326,7 @@ export default {
       if (this.inventory && this.inventory.errorMessage) {
         return this.inventory.errorMessage;
       }
-      return "还没同步 inventory";
+      return "还没获取运行状态";
     },
     inventoryStatusClass() {
       if (this.inventoryLoading) {

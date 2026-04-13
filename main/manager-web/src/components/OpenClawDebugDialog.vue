@@ -26,15 +26,13 @@
     <div class="debug-shell">
       <OpenClawDebugChatPaneModern
         :channel-name="channelName"
-        :has-available-bridge="hasAvailableBridge"
+        :runtime-label="currentRuntimeLabel"
+        :bridge-label="currentBridgeLabel"
+        :device-label="currentDeviceLabel"
+        :queue-summary="queueSummary"
         :has-active-connection="hasActiveConnection"
-        :connected-bridge-count="connectedBridgeCount"
-        :connection-count="connectionCount"
-        :connections-loading="connectionsLoading"
         :debug-ready="debugReady"
         :debug-disabled-reason="debugDisabledReason"
-        :connection-label="currentConnectionLabel"
-        :current-runtime-label="currentRuntimeLabel"
         :show-runtime-selector="showRuntimeSelector"
         :runtime-accounts="runtimeAccounts"
         :account="debugForm.account"
@@ -48,8 +46,10 @@
         :debug-session-id="debugForm.debugSessionId"
         :disable-clear-session="!debugForm.account || !debugForm.debugSessionId"
         :debug-clearing="debugClearing"
-        :debug-messages="debugMessages"
-        :debug-status-events="debugStatusEvents"
+        :tasks="debugTasks"
+        :selected-task-id="selectedTaskId"
+        :selected-task-trace-events="selectedTaskTraceEvents"
+        :playback-jobs="playbackJobs"
         :debug-history-sessions="debugHistorySessions"
         :input-text="debugForm.inputText"
         :debug-sending="debugSending"
@@ -59,6 +59,7 @@
         @clear-session="clearDebugSession"
         @restore-history="restoreDebugHistory"
         @delete-history="deleteDebugHistory"
+        @select-task="handleTaskSelection"
         @update:account="handleDebugAccountChange"
         @update:agent-id="handleDebugAgentChange"
         @update:input-text="updateDebugInputText"
@@ -157,19 +158,79 @@ import Api from "@/apis/api";
 import OpenClawDebugChatPaneModern from "@/components/openclaw/OpenClawDebugChatPaneModern.vue";
 import {
   buildConnectionKey,
+  createDebugSessionId,
   createEmptyDeliveryBinding,
   createEmptyDebugForm,
   DEBUG_HISTORY_PREFIX,
   formatHistoryTime,
   MAX_DEBUG_HISTORY_MESSAGES,
+  MAX_DEBUG_PLAYBACK_JOBS,
   MAX_DEBUG_HISTORY_SESSIONS,
   MAX_DEBUG_STATUS_EVENTS,
+  MAX_DEBUG_TASKS,
+  MAX_DEBUG_TRACE_EVENTS,
   normalizeHistoryEntry,
   safeParseHistory,
   sanitizeDebugMessages,
+  sanitizeDebugPlaybackJobs,
   sanitizeDebugStatuses,
+  sanitizeDebugTasks,
+  sanitizeDebugTraceEvents,
   STATUS_EVENT_TYPES,
 } from "@/components/openclaw/debug-dialog-utils";
+
+const TASK_ACTIVE_STATUSES = new Set(["submitted", "accepted", "running"]);
+const PLAYBACK_ACTIVE_STATUSES = new Set(["queued", "speaking"]);
+
+const createLocalTask = (payload = {}) => ({
+  taskId: payload.taskId || "",
+  text: payload.text || "",
+  agentId: payload.agentId || "",
+  agentName: payload.agentName || payload.agentId || "",
+  account: payload.account || "",
+  bridgeId: payload.bridgeId || "",
+  submittedAt: payload.submittedAt || Date.now(),
+  acceptedAt: 0,
+  completedAt: 0,
+  failedAt: 0,
+  status: "submitted",
+  replyReady: false,
+  replyText: "",
+  browserAudioReady: false,
+  browserAudioText: "",
+  pushToDevice: Boolean(payload.pushToDevice),
+  playbackJobIds: [],
+});
+
+const createTraceEventRecord = (payload = {}) => ({
+  id: payload.id || `trace-${payload.seq || Date.now()}-${payload.type || "system"}`,
+  seq: Number.isFinite(payload.seq) ? payload.seq : 0,
+  type: payload.type || "system",
+  taskId: payload.taskId || "",
+  title: payload.title || "",
+  message: payload.message || "",
+  status: payload.status || "",
+  tone: payload.tone || "info",
+  agentId: payload.agentId || "",
+  agentName: payload.agentName || "",
+  createdAt: payload.createdAt || Date.now(),
+  payload: payload.payload && typeof payload.payload === "object" ? payload.payload : {},
+});
+
+const createPlaybackJob = (payload = {}) => ({
+  playbackJobId: payload.playbackJobId || `playback-${Date.now()}`,
+  taskId: payload.taskId || "",
+  text: payload.text || "",
+  status: payload.status || "queued",
+  source: payload.source || "main-agent",
+  queuePosition: Number.isFinite(payload.queuePosition) ? payload.queuePosition : 0,
+  createdAt: payload.createdAt || Date.now(),
+  startedAt: payload.startedAt || 0,
+  finishedAt: payload.finishedAt || 0,
+  interruptReason: payload.interruptReason || "",
+  agentId: payload.agentId || "",
+  agentName: payload.agentName || "",
+});
 
 export default {
   name: "OpenClawDebugDialog",
@@ -208,9 +269,13 @@ export default {
       debugForm: createEmptyDebugForm(),
       debugMessages: [],
       debugStatusEvents: [],
+      debugTraceEvents: [],
+      debugTasks: [],
+      playbackJobs: [],
       debugHistorySessions: [],
       debugTurnSeed: 0,
       activeDebugTurnId: "",
+      selectedTaskId: "",
       debugSending: false,
       debugClearing: false,
       debugPending: false,
@@ -402,6 +467,71 @@ export default {
         )
       );
     },
+    selectedTask() {
+      return this.debugTasks.find((item) => item.taskId === this.selectedTaskId) || null;
+    },
+    selectedTaskTraceEvents() {
+      if (this.selectedTaskId) {
+        return this.debugTraceEvents.filter((item) => item.taskId === this.selectedTaskId);
+      }
+      return this.debugTraceEvents;
+    },
+    playbackActiveJob() {
+      return this.playbackJobs.find((item) => item.status === "speaking") || null;
+    },
+    playbackQueuedJobs() {
+      return this.playbackJobs
+        .filter((item) => item.status === "queued")
+        .map((item, index) => ({
+          ...item,
+          queuePosition: index + 1,
+        }));
+    },
+    playbackCompletedJobs() {
+      return this.playbackJobs
+        .filter((item) => item.status === "completed")
+        .slice(-6)
+        .reverse();
+    },
+    playbackInterruptedJobs() {
+      return this.playbackJobs
+        .filter((item) => item.status === "interrupted")
+        .slice(-4)
+        .reverse();
+    },
+    queueSummary() {
+      return {
+        speakingCount: this.playbackActiveJob ? 1 : 0,
+        queuedCount: this.playbackQueuedJobs.length,
+        interruptedCount: this.playbackInterruptedJobs.length,
+      };
+    },
+    browserPreview() {
+      const selectedTask = this.selectedTask;
+      if (selectedTask && selectedTask.browserAudioReady && selectedTask.browserAudioText) {
+        return {
+          ready: true,
+          text: selectedTask.browserAudioText,
+        };
+      }
+      return {
+        ready: Boolean(this.latestBrowserAudioText),
+        text: this.latestBrowserAudioText,
+      };
+    },
+    currentBridgeLabel() {
+      const matched = this.bridgeOptions.find((item) => item.bridgeId === this.debugForm.bridgeId)
+        || this.bridgeItems.find((item) => item.bridgeId === this.debugForm.bridgeId);
+      return matched ? (matched.name || matched.bridgeId) : (this.debugForm.bridgeId || "自动 Bridge");
+    },
+    currentDeviceLabel() {
+      const current = this.connectionItems.find((item) => item.value === this.debugForm.connectionKey)
+        || this.connectionItems[0];
+      if (!current) {
+        return "未命中设备";
+      }
+      return current.deviceId || current.sessionId || "未命中设备";
+    },
   },
   watch: {
     visible(val) {
@@ -469,15 +599,198 @@ export default {
     updateDebugInputText(value) {
       this.debugForm.inputText = value;
     },
+    handleTaskSelection(taskId) {
+      this.selectedTaskId = taskId || "";
+      this.syncCurrentHistoryEntry();
+    },
+    findTaskIndex(taskId) {
+      return this.debugTasks.findIndex((item) => item.taskId === taskId);
+    },
+    resolveActiveTaskId() {
+      const activeTask = this.debugTasks.find((item) => TASK_ACTIVE_STATUSES.has(item.status));
+      if (activeTask) {
+        return activeTask.taskId;
+      }
+      if (this.selectedTaskId && this.findTaskIndex(this.selectedTaskId) >= 0) {
+        return this.selectedTaskId;
+      }
+      const latestTask = this.debugTasks[this.debugTasks.length - 1];
+      return latestTask ? latestTask.taskId : "";
+    },
+    ensureTask(taskId, payload = {}) {
+      const normalizedTaskId = String(taskId || "").trim();
+      if (!normalizedTaskId) {
+        return "";
+      }
+      const index = this.findTaskIndex(normalizedTaskId);
+      if (index >= 0) {
+        const current = this.debugTasks[index];
+        this.$set(this.debugTasks, index, {
+          ...current,
+          ...payload,
+          taskId: normalizedTaskId,
+          playbackJobIds: Array.isArray(payload.playbackJobIds)
+            ? payload.playbackJobIds
+            : current.playbackJobIds,
+        });
+      } else {
+        this.debugTasks.push(createLocalTask({
+          taskId: normalizedTaskId,
+          text: payload.text || "未命名任务",
+          agentId: payload.agentId || this.debugForm.agentId,
+          agentName: payload.agentName || this.debugForm.agentName,
+          account: payload.account || this.debugForm.account,
+          bridgeId: payload.bridgeId || this.debugForm.bridgeId,
+          submittedAt: payload.submittedAt || Date.now(),
+          pushToDevice: payload.pushToDevice !== undefined ? payload.pushToDevice : this.debugForm.pushToDevice,
+        }));
+      }
+      if (!this.selectedTaskId) {
+        this.selectedTaskId = normalizedTaskId;
+      }
+      this.refreshDebugPending();
+      this.syncCurrentHistoryEntry();
+      return normalizedTaskId;
+    },
+    patchTask(taskId, patch = {}) {
+      const index = this.findTaskIndex(taskId);
+      if (index < 0) {
+        return;
+      }
+      const current = this.debugTasks[index];
+      const next = {
+        ...current,
+        ...patch,
+      };
+      this.$set(this.debugTasks, index, next);
+      this.refreshDebugPending();
+      this.syncCurrentHistoryEntry();
+    },
+    isTaskInFlight(task = {}) {
+      const status = typeof task.status === "string" ? task.status.trim() : "";
+      return ["submitted", "accepted", "running"].includes(status);
+    },
+    refreshDebugPending() {
+      this.debugPending = this.debugTasks.some((item) => this.isTaskInFlight(item));
+    },
+    resolveTaskIdForEvent(event = {}) {
+      const topLevelTaskId = typeof event.taskId === "string" ? event.taskId.trim() : "";
+      if (topLevelTaskId && this.findTaskIndex(topLevelTaskId) >= 0) {
+        return topLevelTaskId;
+      }
+      const payloadTaskId = event?.payload && typeof event.payload.taskId === "string"
+        ? event.payload.taskId
+        : "";
+      if (payloadTaskId && this.findTaskIndex(payloadTaskId) >= 0) {
+        return payloadTaskId;
+      }
+      return this.resolveActiveTaskId();
+    },
+    appendTraceEventRecord(event = {}, taskId = "", tone = "") {
+      const record = createTraceEventRecord({
+        id: `trace-${event.seq || Date.now()}-${event.type || "system"}`,
+        seq: event.seq || 0,
+        type: event.type || "system",
+        taskId,
+        title: event.title || "",
+        message: event.message || "",
+        status: event.status || "",
+        tone: tone || "info",
+        agentId: event.agentId || "",
+        agentName: event.agentName || "",
+        createdAt: event.timestamp || Date.now(),
+        payload: event.payload || {},
+      });
+      if (this.debugTraceEvents.some((item) => item.id === record.id)) {
+        return;
+      }
+      this.debugTraceEvents.push(record);
+      this.debugTraceEvents = this.debugTraceEvents.slice(-MAX_DEBUG_TRACE_EVENTS);
+      this.syncCurrentHistoryEntry();
+    },
+    ensurePlaybackJob(taskId, text, extra = {}) {
+      if (!taskId || !text) {
+        return null;
+      }
+      const taskIndex = this.findTaskIndex(taskId);
+      if (taskIndex < 0) {
+        return null;
+      }
+      const task = this.debugTasks[taskIndex];
+      const existingId = (task.playbackJobIds || []).find((playbackJobId) => {
+        const matched = this.playbackJobs.find((item) => item.playbackJobId === playbackJobId);
+        return matched && matched.text === text;
+      });
+      if (existingId) {
+        return this.playbackJobs.find((item) => item.playbackJobId === existingId) || null;
+      }
+      const playbackJob = createPlaybackJob({
+        playbackJobId: `playback-${taskId}-${Date.now()}`,
+        taskId,
+        text,
+        status: "queued",
+        createdAt: Date.now(),
+        agentId: extra.agentId || task.agentId,
+        agentName: extra.agentName || task.agentName,
+      });
+      this.playbackJobs.push(playbackJob);
+      this.playbackJobs = this.playbackJobs.slice(-MAX_DEBUG_PLAYBACK_JOBS);
+      this.patchTask(taskId, {
+        playbackJobIds: [...task.playbackJobIds, playbackJob.playbackJobId],
+      });
+      return playbackJob;
+    },
+    findPlaybackJobIndex(taskId = "") {
+      return this.playbackJobs.findIndex((item) =>
+        item.taskId === taskId && PLAYBACK_ACTIVE_STATUSES.has(item.status)
+      );
+    },
+    updatePlaybackState(taskId, status, extra = {}) {
+      let index = this.findPlaybackJobIndex(taskId);
+      if (index < 0) {
+        index = this.playbackJobs.findIndex((item) => PLAYBACK_ACTIVE_STATUSES.has(item.status));
+      }
+      if (index < 0) {
+        return;
+      }
+      const current = this.playbackJobs[index];
+      const now = Date.now();
+      this.$set(this.playbackJobs, index, {
+        ...current,
+        ...extra,
+        status,
+        startedAt: status === "speaking" ? (current.startedAt || now) : current.startedAt,
+        finishedAt: ["completed", "failed", "interrupted"].includes(status) ? now : current.finishedAt,
+      });
+      this.syncCurrentHistoryEntry();
+    },
+    createSubmittedTask(text) {
+      const taskId = `task-${Date.now()}-${this.debugTurnSeed}`;
+      this.ensureTask(taskId, {
+        text,
+        agentId: this.debugForm.agentId,
+        agentName: this.debugForm.agentName,
+        account: this.debugForm.account,
+        bridgeId: this.debugForm.bridgeId,
+        submittedAt: Date.now(),
+        pushToDevice: this.debugForm.pushToDevice,
+      });
+      this.selectedTaskId = taskId;
+      return taskId;
+    },
     resetDebugState() {
       this.stopDebugPolling();
       this.stopBrowserAudio();
       this.debugForm = createEmptyDebugForm();
       this.debugMessages = [];
       this.debugStatusEvents = [];
+      this.debugTraceEvents = [];
+      this.debugTasks = [];
+      this.playbackJobs = [];
       this.debugHistorySessions = [];
       this.debugTurnSeed = 0;
       this.activeDebugTurnId = "";
+      this.selectedTaskId = "";
       this.debugSending = false;
       this.debugClearing = false;
       this.debugPending = false;
@@ -517,7 +830,7 @@ export default {
         return;
       }
       const sessionId = this.debugForm.debugSessionId;
-      if (!this.debugMessages.length && !this.debugStatusEvents.length) {
+      if (!this.debugMessages.length && !this.debugStatusEvents.length && !this.debugTasks.length) {
         this.debugHistorySessions = this.debugHistorySessions.filter((item) => item.sessionId !== sessionId);
         this.persistDebugHistory();
         return;
@@ -545,6 +858,10 @@ export default {
         updatedAt: now,
         messages: this.debugMessages.slice(-MAX_DEBUG_HISTORY_MESSAGES),
         statusEvents: this.debugStatusEvents.slice(-MAX_DEBUG_STATUS_EVENTS),
+        selectedTaskId: this.selectedTaskId,
+        tasks: this.debugTasks.slice(-MAX_DEBUG_TASKS),
+        traceEvents: this.debugTraceEvents.slice(-MAX_DEBUG_TRACE_EVENTS),
+        playbackJobs: this.playbackJobs.slice(-MAX_DEBUG_PLAYBACK_JOBS),
         preview: (latestMessage && latestMessage.text) || (latestStatus && latestStatus.text) || "",
       };
       this.debugHistorySessions = [
@@ -775,7 +1092,11 @@ export default {
       this.debugForm.debugSessionId = createDebugSessionId();
       this.debugMessages = [];
       this.debugStatusEvents = [];
+      this.debugTraceEvents = [];
+      this.debugTasks = [];
+      this.playbackJobs = [];
       this.activeDebugTurnId = "";
+      this.selectedTaskId = "";
       this.debugPending = false;
       this.debugTraceSeq = 0;
       this.syncCurrentHistoryEntry();
@@ -789,7 +1110,11 @@ export default {
         this.debugMessages = [];
       }
       this.debugStatusEvents = [];
+      this.debugTraceEvents = [];
+      this.debugTasks = [];
+      this.playbackJobs = [];
       this.activeDebugTurnId = "";
+      this.selectedTaskId = "";
       this.debugPending = false;
       this.debugTraceSeq = 0;
       this.syncCurrentHistoryEntry();
@@ -885,7 +1210,11 @@ export default {
       this.debugForm.debugSessionId = item.sessionId;
       this.debugMessages = sanitizeDebugMessages(item.messages);
       this.debugStatusEvents = sanitizeDebugStatuses(item.statusEvents);
+      this.debugTasks = sanitizeDebugTasks(item.tasks);
+      this.debugTraceEvents = sanitizeDebugTraceEvents(item.traceEvents);
+      this.playbackJobs = sanitizeDebugPlaybackJobs(item.playbackJobs);
       this.activeDebugTurnId = "";
+      this.selectedTaskId = item.selectedTaskId || (this.debugTasks.length ? this.debugTasks[this.debugTasks.length - 1].taskId : "");
       this.debugTraceSeq = Number.isInteger(item.traceNextSeq) ? item.traceNextSeq : 0;
       this.latestBrowserAudioText = item.latestBrowserAudioText || "";
       if (showMessage) {
@@ -905,7 +1234,11 @@ export default {
         this.latestBrowserAudioText = "";
         this.debugMessages = [];
         this.debugStatusEvents = [];
+        this.debugTraceEvents = [];
+        this.debugTasks = [];
+        this.playbackJobs = [];
         this.activeDebugTurnId = "";
+        this.selectedTaskId = "";
         this.debugTraceSeq = 0;
         this.debugForm.debugSessionId = createDebugSessionId();
       }
@@ -972,11 +1305,14 @@ export default {
           return;
         }
       }
+      const turnId = `turn-${Date.now()}-${this.debugTurnSeed}`;
+      const taskId = this.createSubmittedTask(text);
       const payload = {
           account: this.debugForm.account,
           bridgeId: this.debugForm.bridgeId,
           agentId: this.debugForm.agentId,
           agentName: this.debugForm.agentName,
+          taskId,
           debugSessionId: this.debugForm.debugSessionId,
           sessionId: this.debugForm.sessionId,
           deviceId: this.debugForm.deviceId,
@@ -996,7 +1332,6 @@ export default {
           },
           text,
         };
-      const turnId = `turn-${Date.now()}-${this.debugTurnSeed}`;
       this.debugTurnSeed += 1;
       this.activeDebugTurnId = turnId;
 
@@ -1015,15 +1350,38 @@ export default {
             this.debugForm.debugSessionId = response.debugSessionId;
           }
           this.debugPending = Boolean(response.accepted);
+          if (response.accepted) {
+            this.patchTask(taskId, {
+              status: "accepted",
+              acceptedAt: Date.now(),
+            });
+          }
           this.startDebugPolling(true);
           if (!response.accepted && response.replyText) {
             this.upsertAssistantMessage(response.replyText, {
               meta: [response.account, response.agentName || response.agentId].filter(Boolean).join(" / "),
               turnId,
             });
+            this.patchTask(taskId, {
+              status: "completed",
+              acceptedAt: Date.now(),
+              completedAt: Date.now(),
+              replyReady: true,
+              replyText: response.replyText,
+            });
+            if (this.debugForm.pushToDevice) {
+              this.ensurePlaybackJob(taskId, response.replyText, {
+                agentId: response.agentId,
+                agentName: response.agentName,
+              });
+            }
           }
           return;
         }
+        this.patchTask(taskId, {
+          status: "failed",
+          failedAt: Date.now(),
+        });
         this.appendDebugStatus(data.msg || "OpenClaw 在线调试失败", {
           tone: "danger",
           eventType: "send_failed",
@@ -1032,6 +1390,10 @@ export default {
       }, ({ data }) => {
         this.debugSending = false;
         const message = (data && data.msg) || "OpenClaw 在线调试失败";
+        this.patchTask(taskId, {
+          status: "failed",
+          failedAt: Date.now(),
+        });
         this.appendDebugStatus(message, {
           tone: "danger",
           eventType: "send_failed",
@@ -1062,7 +1424,7 @@ export default {
         window.clearTimeout(this.debugPollingTimer);
         this.debugPollingTimer = null;
       }
-      this.debugPending = false;
+      this.refreshDebugPending();
     },
     fetchDebugSessionTrace() {
       if (!this.channelId || !this.debugForm.debugSessionId) {
@@ -1099,7 +1461,8 @@ export default {
         if (snapshot.browserAudio && snapshot.browserAudio.ready && snapshot.browserAudio.text) {
           this.latestBrowserAudioText = snapshot.browserAudio.text;
         }
-        if (snapshot.pending) {
+        this.refreshDebugPending();
+        if (snapshot.pending && this.debugPending) {
           this.debugPending = true;
           this.scheduleDebugPolling();
         } else {
@@ -1118,6 +1481,7 @@ export default {
       if (!replyText) {
         return;
       }
+      const taskId = this.resolveActiveTaskId();
       const snapshotEvent = {
         type: "reply_ready",
         agentId: snapshot.agentId,
@@ -1130,6 +1494,31 @@ export default {
         }),
         turnId: extra.turnId || this.activeDebugTurnId || this.getLatestTurnId(),
       });
+      this.appendTraceEventRecord({
+        seq: this.debugTraceSeq + 1,
+        type: "reply_ready",
+        title: "最终回复已生成",
+        message: replyText,
+        status: snapshot.status,
+        agentId: snapshot.agentId,
+        agentName: snapshot.agentName,
+        timestamp: Date.now(),
+      }, taskId, "success");
+      if (taskId) {
+        this.patchTask(taskId, {
+          status: "completed",
+          completedAt: Date.now(),
+          replyReady: true,
+          replyText,
+        });
+        const task = this.debugTasks[this.findTaskIndex(taskId)];
+        if (task && task.pushToDevice) {
+          this.ensurePlaybackJob(taskId, replyText, {
+            agentId: snapshot.agentId,
+            agentName: snapshot.agentName,
+          });
+        }
+      }
     },
     resolveTraceMessageText(event = {}) {
       if (event.type === "reply_ready") {
@@ -1254,6 +1643,13 @@ export default {
           tone: "success",
         };
       }
+      if (event.type === "reply_ready") {
+        return {
+          text: "最终回复已生成",
+          meta,
+          tone: "success",
+        };
+      }
       if (event.type === "device_push_started") {
         return {
           text: "正在推送结果到 ESP32",
@@ -1261,11 +1657,25 @@ export default {
           tone: "info",
         };
       }
-      if (event.type === "device_push_succeeded") {
+      if (event.type === "device_push_enqueued") {
+        return {
+          text: event.message || "结果已进入桥接推送队列",
+          meta,
+          tone: "warning",
+        };
+      }
+      if (event.type === "device_push_succeeded" || event.type === "device_push_completed") {
         return {
           text: event.message || "结果已推送到 ESP32",
           meta,
           tone: "success",
+        };
+      }
+      if (event.type === "device_push_interrupted") {
+        return {
+          text: event.message || "设备播报已被打断",
+          meta,
+          tone: "warning",
         };
       }
       if (event.type === "device_push_failed" || event.type === "failed") {
@@ -1286,18 +1696,87 @@ export default {
       if (!event || !event.type) {
         return;
       }
+      const taskId = this.resolveTaskIdForEvent(event);
       const eventId = `trace-${event.seq || Date.now()}-${event.type}`;
+      const statusEvent = this.formatTraceStatus(event);
+      this.appendTraceEventRecord(event, taskId, statusEvent.tone);
+
+      if (event.type === "accepted" && taskId) {
+        this.patchTask(taskId, {
+          status: "accepted",
+          acceptedAt: Date.now(),
+        });
+      }
+      if (event.type === "agent_bound" && taskId) {
+        this.patchTask(taskId, {
+          agentId: event.agentId || this.debugForm.agentId,
+          agentName: event.agentName || this.debugForm.agentName,
+        });
+      }
+      if (["progress", "subagent_spawned", "subagent_completed"].includes(event.type) && taskId) {
+        const taskIndex = this.findTaskIndex(taskId);
+        const currentTask = taskIndex >= 0 ? this.debugTasks[taskIndex] : null;
+        this.patchTask(taskId, {
+          status: "running",
+          acceptedAt: currentTask && currentTask.acceptedAt ? currentTask.acceptedAt : Date.now(),
+        });
+      }
       if (event.type === "reply_ready") {
-        this.upsertAssistantMessage(event.message || "OpenClaw 已生成最终回复", {
+        const replyText = event.message || "OpenClaw 已生成最终回复";
+        this.upsertAssistantMessage(replyText, {
           meta: this.buildTraceMessageMeta(event, {
             statusLabel: this.resolveTraceMessageStage(event),
           }),
           turnId: this.activeDebugTurnId || this.getLatestTurnId(),
         });
-        return;
+        if (taskId) {
+          this.patchTask(taskId, {
+            status: "completed",
+            completedAt: Date.now(),
+            replyReady: true,
+            replyText,
+          });
+          const task = this.debugTasks[this.findTaskIndex(taskId)];
+          if (task && task.pushToDevice) {
+            this.ensurePlaybackJob(taskId, replyText, {
+              agentId: event.agentId,
+              agentName: event.agentName,
+            });
+          }
+        }
       }
       if (event.type === "browser_audio_ready") {
-        this.latestBrowserAudioText = (event.payload && event.payload.text) || this.latestBrowserAudioText;
+        const browserText = (event.payload && event.payload.text) || this.latestBrowserAudioText;
+        this.latestBrowserAudioText = browserText;
+        if (taskId) {
+          this.patchTask(taskId, {
+            browserAudioReady: Boolean(browserText),
+            browserAudioText: browserText,
+          });
+        }
+      }
+      if (event.type === "device_push_started") {
+        this.updatePlaybackState(taskId, "speaking");
+      }
+      if (event.type === "device_push_enqueued") {
+        this.updatePlaybackState(taskId, "queued");
+      }
+      if (event.type === "device_push_succeeded" || event.type === "device_push_completed") {
+        this.updatePlaybackState(taskId, "completed");
+      }
+      if (event.type === "device_push_failed") {
+        this.updatePlaybackState(taskId, "failed");
+      }
+      if (event.type === "device_push_interrupted") {
+        this.updatePlaybackState(taskId, "interrupted", {
+          interruptReason: (event.payload && event.payload.reason) || "interrupt",
+        });
+      }
+      if (event.type === "failed" && taskId) {
+        this.patchTask(taskId, {
+          status: "failed",
+          failedAt: Date.now(),
+        });
       }
       if (this.shouldAppendTraceMessage(event)) {
         this.appendTraceMessage(event, {
@@ -1305,10 +1784,9 @@ export default {
           statusLabel: this.resolveTraceMessageStage(event),
         });
       }
-      if (!STATUS_EVENT_TYPES.has(event.type)) {
+      if (!STATUS_EVENT_TYPES.has(event.type) && !["reply_ready", "device_push_completed", "device_push_interrupted"].includes(event.type)) {
         return;
       }
-      const statusEvent = this.formatTraceStatus(event);
       if (!statusEvent.text) {
         return;
       }

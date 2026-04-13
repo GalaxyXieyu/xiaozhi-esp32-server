@@ -1,5 +1,6 @@
 package xiaozhi.modules.openclaw.service.impl;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -136,7 +137,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         guide.setInventoryPath(channel.getInventoryPath());
         guide.setDefaultAgentId(defaultAgentId);
         guide.setAccessTokenConfigured(StringUtils.isNotBlank(serverSecret));
-        guide.setInstallCommand(buildInstallCommand(normalizedOrigin, serverSecret, channel.getId(), channel.getName(), defaultAgentId));
+        guide.setInstallCommand(buildInstallCommand(normalizedOrigin, serverSecret, channel.getName(), defaultAgentId));
         return guide;
     }
 
@@ -162,7 +163,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
             return inventory;
         }
 
-        String sourceUrl = buildInventoryUrl(channel, channelId);
+        String sourceUrl = buildInventoryUrl(channel);
         inventory.setSourceUrl(sourceUrl);
 
         try {
@@ -245,6 +246,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         requestBody.put("agentId", StringUtils.trimToEmpty(request.getAgentId()));
         requestBody.put("agentName", StringUtils.trimToEmpty(request.getAgentName()));
         requestBody.put("debugSessionId", StringUtils.trimToEmpty(request.getDebugSessionId()));
+        requestBody.put("taskId", StringUtils.trimToEmpty(request.getTaskId()));
         requestBody.put("sessionId", StringUtils.trimToEmpty(request.getSessionId()));
         requestBody.put("deviceId", StringUtils.trimToEmpty(request.getDeviceId()));
         requestBody.put("peerId", StringUtils.trimToEmpty(request.getPeerId()));
@@ -684,8 +686,8 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         );
     }
 
-    private String buildInventoryUrl(OpenClawChannelDTO channel, String channelId) {
-        return buildChannelApiUrl(channel, channel.getInventoryPath(), buildInventoryQuery(channelId));
+    private String buildInventoryUrl(OpenClawChannelDTO channel) {
+        return buildChannelApiUrl(channel, channel.getInventoryPath());
     }
 
     private String buildChannelApiUrl(OpenClawChannelDTO channel, String path) {
@@ -706,14 +708,73 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
     }
 
     private String buildDefaultBaseUrl(String serverOrigin) {
-        if (StringUtils.isBlank(serverOrigin)) {
+        String baseFromOta = buildBaseUrlFromOtaConfig();
+        if (StringUtils.isNotBlank(baseFromOta)) {
+            return baseFromOta;
+        }
+        String normalizedOrigin = trimTrailingSlash(serverOrigin);
+        if (StringUtils.isBlank(normalizedOrigin)) {
             return "";
         }
-        return trimTrailingSlash(serverOrigin) + "/admin/openclaw";
+        String localRuntimeBaseUrl = buildLocalRuntimeBaseUrl(normalizedOrigin);
+        if (StringUtils.isNotBlank(localRuntimeBaseUrl)) {
+            return localRuntimeBaseUrl;
+        }
+        return normalizedOrigin + "/admin/openclaw";
     }
 
     private String resolveLocalAdminToken() {
         return StringUtils.trimToEmpty(sysParamsService.getValue(Constant.SERVER_SECRET, true));
+    }
+
+    private String buildBaseUrlFromOtaConfig() {
+        String otaUrl = StringUtils.trimToEmpty(sysParamsService.getValue(Constant.SERVER_OTA, true));
+        if (StringUtils.isBlank(otaUrl) || StringUtils.equalsIgnoreCase(otaUrl, "null")) {
+            return "";
+        }
+        String origin = extractOrigin(otaUrl);
+        return StringUtils.isBlank(origin) ? "" : trimTrailingSlash(origin) + "/admin/openclaw";
+    }
+
+    private String buildLocalRuntimeBaseUrl(String serverOrigin) {
+        try {
+            URI uri = URI.create(serverOrigin);
+            String host = StringUtils.trimToEmpty(uri.getHost());
+            int port = uri.getPort();
+            if (!isLoopbackHost(host) || port != 8002) {
+                return "";
+            }
+            String scheme = StringUtils.defaultIfBlank(uri.getScheme(), "http");
+            return scheme + "://" + host + ":8003/admin/openclaw";
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private String extractOrigin(String url) {
+        try {
+            URI uri = URI.create(StringUtils.trimToEmpty(url));
+            if (StringUtils.isBlank(uri.getScheme()) || StringUtils.isBlank(uri.getHost())) {
+                return "";
+            }
+            int port = uri.getPort();
+            if (port < 0 || isDefaultPort(uri.getScheme(), port)) {
+                return uri.getScheme() + "://" + uri.getHost();
+            }
+            return uri.getScheme() + "://" + uri.getHost() + ":" + port;
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private boolean isLoopbackHost(String host) {
+        return StringUtils.equals(host, "127.0.0.1")
+                || StringUtils.equalsIgnoreCase(host, "localhost");
+    }
+
+    private boolean isDefaultPort(String scheme, int port) {
+        return ("http".equalsIgnoreCase(scheme) && port == 80)
+                || ("https".equalsIgnoreCase(scheme) && port == 443);
     }
 
     private String generateChannelId(String channelName, List<OpenClawChannelDTO> existingChannels) {
@@ -743,16 +804,15 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return channels.stream().anyMatch(item -> item != null && StringUtils.equals(item.getId(), channelId));
     }
 
-    private String buildInstallCommand(String serverUrl, String adminKey, String accountId, String channelName,
+    private String buildInstallCommand(String serverUrl, String adminKey, String channelName,
                                        String defaultAgentId) {
-        if (StringUtils.isBlank(serverUrl) || StringUtils.isBlank(adminKey) || StringUtils.isBlank(accountId)) {
+        if (StringUtils.isBlank(serverUrl) || StringUtils.isBlank(adminKey)) {
             return "";
         }
         String encodedName = shellQuote(channelName);
         return "npx -y --registry=https://registry.npmjs.org @galaxyxieyu/openclaw-xiaozhi-cli@latest install"
                 + " --server-url " + shellQuote(serverUrl)
                 + " --admin-key " + shellQuote(adminKey)
-                + " --account " + shellQuote(accountId)
                 + " --name " + encodedName
                 + " --default-agent-id " + shellQuote(defaultAgentId);
     }
@@ -842,14 +902,6 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
         return query;
     }
 
-    private Map<String, String> buildInventoryQuery(String channelId) {
-        Map<String, String> query = new LinkedHashMap<>();
-        if (StringUtils.isNotBlank(channelId)) {
-            query.put("account", channelId);
-        }
-        return query;
-    }
-
     private OpenClawVoiceInterruptResponseDTO toVoiceInterruptResponse(String channelId, String sourceUrl, Map<String, Object> raw) {
         OpenClawVoiceInterruptResponseDTO response = new OpenClawVoiceInterruptResponseDTO();
         response.setChannelId(channelId);
@@ -914,6 +966,7 @@ public class OpenClawConfigServiceImpl implements OpenClawConfigService {
                 OpenClawDebugSessionTraceResponseDTO.TraceEvent event = new OpenClawDebugSessionTraceResponseDTO.TraceEvent();
                 event.setSeq(firstInteger(eventMap, new String[]{"seq"}));
                 event.setType(firstString(eventMap, new String[]{"type"}));
+                event.setTaskId(firstString(eventMap, new String[]{"taskId"}));
                 event.setTimestamp(firstLong(eventMap, new String[]{"timestamp"}));
                 event.setTitle(firstString(eventMap, new String[]{"title"}));
                 event.setMessage(firstString(eventMap, new String[]{"message"}));

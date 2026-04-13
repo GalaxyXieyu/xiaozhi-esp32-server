@@ -79,7 +79,7 @@
                         <div class="agent-type-hint">
                           {{
                             isOpenClawAgent
-                              ? "当前智能体改为由 OpenClaw inventory 绑定，提示词与函数能力默认由 OpenClaw 侧维护。"
+                              ? "当前智能体改为由 OpenClaw 运行时绑定，提示词与函数能力默认由 OpenClaw 侧维护。"
                               : "当前智能体使用本地原生配置流，可直接编辑提示词、函数和上下文源。"
                           }}
                         </div>
@@ -292,7 +292,7 @@
                               Target 提示：{{ selectedDeliveryChannelMeta.targetHint }}
                             </span>
                             <span v-if="!deliveryAccountOptions.length && !deliveryTargetOptions.length">
-                              当前 inventory 未提供可枚举账号/目标，可直接手工输入。
+                              当前运行时状态未提供可枚举账号/目标，可直接手工输入。
                             </span>
                           </div>
                           <div class="openclaw-binding-meta">
@@ -803,7 +803,7 @@ export default {
         runtimeAccounts.length &&
         !runtimeAccounts.some((item) => item.value === this.openclawBinding.runtimeAccount)
       ) {
-        warnings.push("当前绑定的 runtime/account 已不在最新 inventory 中");
+        warnings.push("当前绑定的 runtime/account 已不在最新运行时状态中");
       }
 
       if (
@@ -811,7 +811,7 @@ export default {
         agents.length &&
         !agents.some((item) => item.value === this.openclawBinding.openclawAgentId)
       ) {
-        warnings.push("当前绑定的 OpenClaw Agent 已不在最新 inventory 中，可能是历史脏数据");
+        warnings.push("当前绑定的 OpenClaw Agent 已不在最新运行时状态中，可能是历史脏数据");
       }
 
       if (
@@ -820,7 +820,7 @@ export default {
         deliveryChannels.length &&
         !deliveryChannels.some((item) => item.value === deliveryBinding.deliveryChannel)
       ) {
-        warnings.push("当前详细稿投递渠道已不在最新 inventory 中");
+        warnings.push("当前详细稿投递渠道已不在最新运行时状态中");
       }
 
       const matchedDeliveryChannel = deliveryChannels.find(
@@ -1200,14 +1200,14 @@ export default {
         this.openclawInventory = {
           ...createEmptyOpenClawInventory(),
           channelId,
-          errorMessage: data.msg || "拉取 OpenClaw inventory 失败",
+          errorMessage: data.msg || "拉取 OpenClaw 状态失败",
         };
       }, ({ data }) => {
         this.openclawInventoryLoading = false;
         this.openclawInventory = {
           ...createEmptyOpenClawInventory(),
           channelId,
-          errorMessage: (data && data.msg) || "拉取 OpenClaw inventory 失败",
+          errorMessage: (data && data.msg) || "拉取 OpenClaw 状态失败",
         };
       });
     },

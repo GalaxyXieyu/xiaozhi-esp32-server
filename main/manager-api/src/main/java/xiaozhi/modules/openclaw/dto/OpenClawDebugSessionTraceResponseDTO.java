@@ -96,6 +96,7 @@ public class OpenClawDebugSessionTraceResponseDTO implements Serializable {
 
         private Integer seq;
         private String type;
+        private String taskId;
         private Long timestamp;
         private String title;
         private String message;

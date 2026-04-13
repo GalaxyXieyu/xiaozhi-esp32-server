@@ -151,7 +151,7 @@
                 />
               </el-select>
               <div v-if="selectedAgentNeedsInventorySync" class="setting-warning">
-                当前 Agent 未出现在 inventory 中
+                当前 Agent 未出现在已发现列表中
               </div>
             </div>
 

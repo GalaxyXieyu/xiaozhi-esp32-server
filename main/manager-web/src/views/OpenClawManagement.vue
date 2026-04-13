@@ -161,7 +161,7 @@ const compactInventoryMessage = (message = "") => {
   }
   const lower = text.toLowerCase();
   if (lower.includes("404")) {
-    return "OpenClaw inventory 接口不存在";
+    return "OpenClaw 探测接口不存在";
   }
   if (lower.includes("401") || lower.includes("403")) {
     return "OpenClaw 鉴权失败";
@@ -379,13 +379,13 @@ export default {
           resolve({
             ok: false,
             payload: {},
-            message: data.msg || "同步 OpenClaw inventory 失败",
+            message: data.msg || "刷新 OpenClaw 状态失败",
           });
         }, ({ data }) => {
           resolve({
             ok: false,
             payload: {},
-            message: (data && data.msg) || "同步 OpenClaw inventory 失败",
+            message: (data && data.msg) || "刷新 OpenClaw 状态失败",
           });
         });
       });
@@ -494,7 +494,7 @@ export default {
       this.inventoryLoading = true;
       this.connectionFeedback = {
         status: "checking",
-        message: "正在拉取 OpenClaw inventory，请稍候。",
+        message: "正在刷新 OpenClaw 状态，请稍候。",
         checkedAt: "",
       };
       Api.openclaw.getChannelInventory(this.selectedChannelId, ({ data }) => {
@@ -522,7 +522,7 @@ export default {
         this.inventory = {
           ...createEmptyInventory(),
           channelId: this.selectedChannelId,
-          errorMessage: compactInventoryMessage(data.msg || "同步 OpenClaw inventory 失败"),
+          errorMessage: compactInventoryMessage(data.msg || "刷新 OpenClaw 状态失败"),
         };
         this.connectionFeedback = this.buildConnectionFeedback(this.inventory);
         this.channelBindings = [];
@@ -537,7 +537,7 @@ export default {
         this.inventory = {
           ...createEmptyInventory(),
           channelId: this.selectedChannelId,
-          errorMessage: compactInventoryMessage((data && data.msg) || "同步 OpenClaw inventory 失败"),
+          errorMessage: compactInventoryMessage((data && data.msg) || "刷新 OpenClaw 状态失败"),
         };
         this.connectionFeedback = this.buildConnectionFeedback(this.inventory);
         this.channelBindings = [];
@@ -759,7 +759,7 @@ export default {
       summary.inventoryTone = this.inventory.healthy ? "healthy" : (this.inventory.errorMessage ? "attention" : "idle");
       summary.inventoryNote = this.inventory.healthy
         ? `${this.inventory.connectedBridgeCount || 0} 个在线设备`
-        : (compactInventoryMessage(this.inventory.errorMessage) || "尚未拉取 inventory");
+        : (compactInventoryMessage(this.inventory.errorMessage) || "尚未获取运行状态");
       this.updateChannelSummary(this.selectedChannelId, summary);
     },
     openDebugForAgent(payload) {

@@ -875,6 +875,7 @@ class OpenClawAdminHandler(BaseHandler):
         speaker = (data.get("speaker") or "管理后台调试").strip() or "管理后台调试"
         agent_id = (data.get("agentId") or "").strip() or None
         agent_name = (data.get("agentName") or "").strip() or None
+        task_id = (data.get("taskId") or "").strip() or None
         push_to_device = bool(data.get("pushToDevice"))
         browser_audio = bool(data.get("browserAudio"))
         delivery_binding = data.get("deliveryBinding")
@@ -901,6 +902,7 @@ class OpenClawAdminHandler(BaseHandler):
                 {
                     "account": account,
                     "debugSessionId": debug_session_id,
+                    "taskId": task_id,
                     "sessionId": target_session_id,
                     "deviceId": target_device_id,
                     "clientId": client_id,
@@ -923,6 +925,7 @@ class OpenClawAdminHandler(BaseHandler):
                     "peerId": peer_id,
                     "account": account,
                     "bridgeId": bridge_id,
+                    "taskId": task_id,
                     "pushToDevice": push_to_device,
                     "browserAudio": browser_audio,
                     "bound": bind_result,
